@@ -1,0 +1,79 @@
+{
+  "split": {
+    "name": "synthetic_cells_v0",
+    "seed": 20260831,
+    "size": 64,
+    "n_train": 64,
+    "n_val": 16,
+    "epochs_unet": 12
+  },
+  "device": "cuda",
+  "unet_train_history": [
+    {
+      "epoch": 0,
+      "train_ce_dice": 0.640431672334671
+    },
+    {
+      "epoch": 1,
+      "train_ce_dice": 0.19607745297253132
+    },
+    {
+      "epoch": 2,
+      "train_ce_dice": 0.13410798273980618
+    },
+    {
+      "epoch": 3,
+      "train_ce_dice": 0.09640268236398697
+    },
+    {
+      "epoch": 4,
+      "train_ce_dice": 0.08885149192065
+    },
+    {
+      "epoch": 5,
+      "train_ce_dice": 0.08754034526646137
+    },
+    {
+      "epoch": 6,
+      "train_ce_dice": 0.07327044941484928
+    },
+    {
+      "epoch": 7,
+      "train_ce_dice": 0.06993730226531625
+    },
+    {
+      "epoch": 8,
+      "train_ce_dice": 0.06298563536256552
+    },
+    {
+      "epoch": 9,
+      "train_ce_dice": 0.06333424942567945
+    },
+    {
+      "epoch": 10,
+      "train_ce_dice": 0.0601077675819397
+    },
+    {
+      "epoch": 11,
+      "train_ce_dice": 0.0564870429225266
+    }
+  ],
+  "val": {
+    "intensity_threshold": {
+      "dice": 0.5071457624435425,
+      "iou": 0.33971554040908813,
+      "pixel_error": 0.1657562255859375
+    },
+    "unet_trained": {
+      "dice": 0.9655810594558716,
+      "iou": 0.9334540367126465,
+      "pixel_error": 0.0057525634765625
+    },
+    "wavegazer_closed_form": {
+      "dice": 0.2908718138933182,
+      "iou": 0.170562744140625,
+      "pixel_error": 0.4147186279296875
+    }
+  },
+  "note": "Named split, not noise. WavegazerNet is not trained. If Wavegazer residual is bad, change fsot_routes.py, not conv weights."
+}

@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1480" height="560" viewBox="0 0 1480 560">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0f172a"/>
+    </marker>
+  </defs>
+  <rect width="1480" height="560" fill="#f8fafc"/>
+  <text x="740" y="36" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="22" font-weight="700" fill="#0f172a">Standard U-Net build / train / infer pipeline</text>
+  <text x="740" y="58" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13" fill="#475569">Paper recipe on the top row. nnU-Net (the current open-source standard) additions on the bottom row.</text>
+
+  <rect x="40" y="90" width="1400" height="200" rx="10" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="60" y="118" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#1d4ed8">2015 paper (Caffe)</text>
+
+  <rect x="60" y="140" width="150" height="70" rx="8" fill="#dbeafe" stroke="#1d4ed8"/>
+  <text x="135" y="170" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13" font-weight="700">Image + mask</text>
+  <text x="135" y="190" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11">few annotated tiles</text>
+
+  <line x1="210" y1="175" x2="240" y2="175" stroke="#0f172a" stroke-width="2.2" marker-end="url(#arrow)"/>
+
+  <rect x="240" y="140" width="180" height="70" rx="8" fill="#dbeafe" stroke="#1d4ed8"/>
+  <text x="330" y="170" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13" font-weight="700">Elastic augment</text>
+  <text x="330" y="190" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11">3×3 grid, σ=10 px</text>
+
+  <line x1="420" y1="175" x2="450" y2="175" stroke="#0f172a" stroke-width="2.2" marker-end="url(#arrow)"/>
+
+  <rect x="450" y="140" width="160" height="70" rx="8" fill="#dbeafe" stroke="#1d4ed8"/>
+  <text x="530" y="170" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13" font-weight="700">U-Net forward</text>
+  <text x="530" y="190" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11">batch = 1 tile</text>
+
+  <line x1="610" y1="175" x2="640" y2="175" stroke="#0f172a" stroke-width="2.2" marker-end="url(#arrow)"/>
+
+  <rect x="640" y="140" width="170" height="70" rx="8" fill="#dbeafe" stroke="#1d4ed8"/>
+  <text x="725" y="170" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13" font-weight="700">Softmax + wCE</text>
+  <text x="725" y="190" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11">eq. (1)(2), w0=10</text>
+
+  <line x1="810" y1="175" x2="840" y2="175" stroke="#0f172a" stroke-width="2.2" marker-end="url(#arrow)"/>
+
+  <rect x="840" y="140" width="170" height="70" rx="8" fill="#dbeafe" stroke="#1d4ed8"/>
+  <text x="925" y="170" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13" font-weight="700">SGD + momentum</text>
+  <text x="925" y="190" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11">μ = 0.99, He init</text>
+
+  <line x1="1010" y1="175" x2="1040" y2="175" stroke="#0f172a" stroke-width="2.2" marker-end="url(#arrow)"/>
+
+  <rect x="1040" y="140" width="180" height="70" rx="8" fill="#dbeafe" stroke="#1d4ed8"/>
+  <text x="1130" y="170" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13" font-weight="700">Overlap-tile infer</text>
+  <text x="1130" y="190" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11">mirror borders</text>
+
+  <line x1="1220" y1="175" x2="1250" y2="175" stroke="#0f172a" stroke-width="2.2" marker-end="url(#arrow)"/>
+
+  <rect x="1250" y="140" width="160" height="70" rx="8" fill="#fecaca" stroke="#991b1b"/>
+  <text x="1330" y="170" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13" font-weight="700">Seg map</text>
+  <text x="1330" y="190" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11">IOU / warping / Rand</text>
+
+  <rect x="40" y="320" width="1400" height="210" rx="10" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="60" y="348" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#047857">2018–now standard (nnU-Net / PlainConvUNet)</text>
+
+  <rect x="60" y="370" width="180" height="80" rx="8" fill="#d1fae5" stroke="#047857"/>
+  <text x="150" y="400" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13" font-weight="700">Dataset fingerprint</text>
+  <text x="150" y="420" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11">spacing, median shape</text>
+  <text x="150" y="436" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11">crop / resample / z-score</text>
+
+  <line x1="240" y1="410" x2="270" y2="410" stroke="#0f172a" stroke-width="2.2" marker-end="url(#arrow)"/>
+
+  <rect x="270" y="370" width="200" height="80" rx="8" fill="#d1fae5" stroke="#047857"/>
+  <text x="370" y="400" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13" font-weight="700">Auto topology</text>
+  <text x="370" y="420" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11">patch size, #pools, 2D/3D</text>
+  <text x="370" y="436" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11">IN + leaky ReLU, pad=1</text>
+
+  <line x1="470" y1="410" x2="500" y2="410" stroke="#0f172a" stroke-width="2.2" marker-end="url(#arrow)"/>
+
+  <rect x="500" y="370" width="210" height="80" rx="8" fill="#d1fae5" stroke="#047857"/>
+  <text x="605" y="400" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13" font-weight="700">Train 1000 epochs</text>
+  <text x="605" y="420" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11">L = Dice + CE</text>
+  <text x="605" y="436" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11">SGD 0.01, poly LR, DS</text>
+
+  <line x1="710" y1="410" x2="740" y2="410" stroke="#0f172a" stroke-width="2.2" marker-end="url(#arrow)"/>
+
+  <rect x="740" y="370" width="210" height="80" rx="8" fill="#d1fae5" stroke="#047857"/>
+  <text x="845" y="400" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13" font-weight="700">Sliding window</text>
+  <text x="845" y="420" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11">Gaussian weight, TTA flip</text>
+  <text x="845" y="436" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11">5-fold ensemble</text>
+
+  <line x1="950" y1="410" x2="980" y2="410" stroke="#0f172a" stroke-width="2.2" marker-end="url(#arrow)"/>
+
+  <rect x="980" y="370" width="200" height="80" rx="8" fill="#d1fae5" stroke="#047857"/>
+  <text x="1080" y="400" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13" font-weight="700">Post-process</text>
+  <text x="1080" y="420" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11">keep largest component</text>
+  <text x="1080" y="436" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11">if GT is always 1 CC</text>
+
+  <line x1="1180" y1="410" x2="1210" y2="410" stroke="#0f172a" stroke-width="2.2" marker-end="url(#arrow)"/>
+
+  <rect x="1210" y="370" width="200" height="80" rx="8" fill="#fecaca" stroke="#991b1b"/>
+  <text x="1310" y="400" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13" font-weight="700">Dice / IoU</text>
+  <text x="1310" y="420" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11">foreground mean Dice</text>
+  <text x="1310" y="436" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11">the number we beat</text>
+</svg>

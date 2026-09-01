@@ -1,0 +1,37 @@
+{
+  "project": "Wavegazer Net",
+  "authority_pin": "D1D38A",
+  "collapse_theta": 0.9174663774653723,
+  "k": 0.4202216641606967,
+  "p_new": 0.30030227667037146,
+  "scalar_default_D25": -0.5024559462100433,
+  "scalar_qm_observed": 0.9555063001027194,
+  "environment": {
+    "device": "cuda",
+    "gpu": "NVIDIA GeForce RTX 5070"
+  },
+  "unet": {
+    "trainable": 31035586,
+    "output_shape": [
+      1,
+      2,
+      64,
+      64
+    ],
+    "dummy_dice": 0.2626788020133972
+  },
+  "wavegazer": {
+    "trainable": 0,
+    "frozen_buffers": 373312,
+    "output_shape": [
+      1,
+      2,
+      64,
+      64
+    ],
+    "dummy_dice": 0.4000000059604645,
+    "dummy_iou": 0.25,
+    "dummy_pixel_error": 0.75
+  },
+  "note": "dummy_* is untrained U-Net vs closed-form WavegazerNet on noise. Not a dataset claim."
+}

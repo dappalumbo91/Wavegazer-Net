@@ -1,0 +1,112 @@
+{
+  "environment": {
+    "torch": "2.9.1+cu128",
+    "cuda_available": true,
+    "device": "cuda",
+    "gpu_name": "NVIDIA GeForce RTX 5070",
+    "gpu_capability": "12.0",
+    "matmul_ok": true
+  },
+  "modern": {
+    "mode": "modern",
+    "input_shape": [
+      1,
+      1,
+      256,
+      256
+    ],
+    "output_shape": [
+      1,
+      2,
+      256,
+      256
+    ],
+    "parameters": 31035586,
+    "encoder_feature_shapes": [
+      {
+        "channels": 64,
+        "height": 256,
+        "width": 256
+      },
+      {
+        "channels": 128,
+        "height": 128,
+        "width": 128
+      },
+      {
+        "channels": 256,
+        "height": 64,
+        "width": 64
+      },
+      {
+        "channels": 512,
+        "height": 32,
+        "width": 32
+      },
+      {
+        "channels": 1024,
+        "height": 16,
+        "width": 16
+      }
+    ],
+    "dummy_dice": 0.3283040523529053,
+    "dummy_iou": 0.1963898241519928,
+    "dummy_pixel_error": 0.49725341796875,
+    "dummy_ce_dice_loss": 1.4556465148925781
+  },
+  "paper": {
+    "mode": "paper",
+    "input_shape": [
+      1,
+      1,
+      572,
+      572
+    ],
+    "output_shape": [
+      1,
+      2,
+      388,
+      388
+    ],
+    "parameters": 31030658,
+    "encoder_feature_shapes": [
+      {
+        "channels": 64,
+        "height": 568,
+        "width": 568
+      },
+      {
+        "channels": 128,
+        "height": 280,
+        "width": 280
+      },
+      {
+        "channels": 256,
+        "height": 136,
+        "width": 136
+      },
+      {
+        "channels": 512,
+        "height": 64,
+        "width": 64
+      },
+      {
+        "channels": 1024,
+        "height": 28,
+        "width": 28
+      }
+    ],
+    "dummy_dice": 0.09615218639373779,
+    "dummy_iou": 0.050504133105278015,
+    "dummy_pixel_error": 0.27773940563201904,
+    "dummy_ce_dice_loss": 1.8867071866989136
+  },
+  "published_outcomes_to_match_later": {
+    "isbi_em_warping_error": 0.0003529,
+    "isbi_em_rand_error": 0.0382,
+    "isbi_em_pixel_error": 0.0611,
+    "phc_u373_iou": 0.9203,
+    "dic_hela_iou": 0.7756,
+    "source": "Ronneberger, Fischer, Brox, MICCAI 2015, arXiv:1505.04597"
+  }
+}

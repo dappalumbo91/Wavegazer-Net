@@ -1,0 +1,40 @@
+{
+  "split": {
+    "name": "biohub_zmax_disk_v0",
+    "root": "D:\\Kaggle_Biohub_Data\\train",
+    "n_train": 18,
+    "n_val": 6,
+    "size": 256,
+    "radius_px": 8,
+    "epochs_unet": 8,
+    "seed": 20260831,
+    "dump_bytes": 175345857705
+  },
+  "device": "cuda",
+  "val": {
+    "gt_fg_fraction": 0.0073674521408975124,
+    "intensity_threshold": {
+      "dice": 0.02579106204211712,
+      "iou": 0.013063997961580753,
+      "pixel_error": 0.5089365839958191
+    },
+    "unet_trained": {
+      "dice": 7.512982458379724e-10,
+      "iou": 7.512982458379724e-10,
+      "pixel_error": 0.0075016021728515625,
+      "note": "Collapsed to all-background on 8 epochs; disks are ~0.7% of pixels. Needs the paper weight map."
+    },
+    "wavegazer_median": {
+      "dice": 0.02193973772227764,
+      "iou": 0.01109221437945962,
+      "pixel_error": 0.4963665008544922
+    },
+    "wavegazer_sparse": {
+      "dice": 0.026205617003142834,
+      "iou": 0.013277152553200722,
+      "pixel_error": 0.07526779174804688,
+      "pred_fg_fraction": 0.070770263671875
+    }
+  },
+  "note": "Local Biohub dump (~175 GB). Disks around GT nodes on Z-max at the busiest t. Not official adj_edge_jaccard. Sparse gate is mean+phi*std. Wavegazer is not trained."
+}
