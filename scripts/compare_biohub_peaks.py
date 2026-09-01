@@ -55,12 +55,17 @@ def _plane_and_gt(zarr_path: Path, geff_path: Path):
         return None
     z0 = int(np.clip(np.median(z[sel]), 0, arr.shape[1] - 1))
     planes = []
-    for dz in (-1, 0, 1):
-        zz = int(np.clip(z0 + dz, 0, arr.shape[1] - 1))
-        plane = np.asarray(arr[t0, zz]).astype(np.float32)
+
+    def _norm(plane: np.ndarray) -> torch.Tensor:
         lo, hi = np.quantile(plane, [0.01, 0.99])
         plane = np.clip((plane - lo) / max(float(hi - lo), 1e-6), 0.0, 1.0)
-        planes.append(torch.from_numpy(plane)[None, None])
+        return torch.from_numpy(plane)[None, None]
+
+    for dz in (-1, 0, 1):
+        zz = int(np.clip(z0 + dz, 0, arr.shape[1] - 1))
+        planes.append(_norm(np.asarray(arr[t0, zz]).astype(np.float32)))
+    # Extra GT-free view: Z-max at this t (helps when the cell is off median-z).
+    planes.append(_norm(np.asarray(arr[t0]).max(axis=0).astype(np.float32)))
     gt = torch.tensor(np.stack([x[sel], y[sel]], axis=1), dtype=torch.float32)
     return planes, gt, {"t": t0, "z": z0, "n_gt": int(gt.size(0))}
 

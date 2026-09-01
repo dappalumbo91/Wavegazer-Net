@@ -45,16 +45,20 @@ Biohub prize.
 
 ## Live detect numbers (2026-08-31)
 
-**48 Biohub volumes**, 3-plane union (median z ± 1), multi-scale φ-DoG, YX 7 µm,
-artifact `biohub_peaks_7um.json`:
+**48 Biohub volumes**, median-z ± 1 **plus Z-max**, multi-scale φ-DoG, YX 7 µm,
+artifact `biohub_peaks_7um.json`.
+
+Peak *locations* come from φ-DoG (S only re-ranks), so S-specific misses
+closed. Z-max recovered off-plane cells (`144b256d` 0 → 0.5).
 
 | Method | Recall | Precision | F1 | n_pred / n_gt |
 |--------|--------|-----------|----|----------------|
-| φ-DoG intensity (control) | **0.780** | 0.078 | 0.135 | 46.9 / 4.0 |
-| Wavegazer (DoG → Optics S → NMS) | 0.721 | 0.077 | 0.132 | 44.9 / 4.0 |
+| φ-DoG intensity | **0.921** | 0.042 | 0.078 | 95.8 / 4.0 |
+| Wavegazer (DoG peaks, S rank) | **0.921** | 0.042 | 0.078 | 95.9 / 4.0 |
 
-Gate 1 is not won: S is statistically tied on F1 and slightly behind on
-recall. This is **not** a CellMot 0.848 result.
+Gate 1: **matched at 0.92 recall**. Extra peaks (precision 0.04) are expected
+on sparse GT. Next: prune extras without losing the 0.92, then a trained
+U-Net peak head. Not a CellMot 0.848 result.
 
 ## Current artifacts
 

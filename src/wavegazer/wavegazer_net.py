@@ -55,11 +55,12 @@ class WavegazerNet(nn.Module):
         *,
         um_per_px: float = DEFAULT_YX_UM,
         match_um: float = MATCH_UM,
-    ) -> torch.Tensor:
-        """Detect field: φ-DoG blob map, then Optics S. Peaks, not dense masks."""
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """DoG blob map and Optics S on that map. Peaks live on the DoG."""
         luma = _luma(x)
         blobs = multi_scale_blob_map(luma, sigma_px(um_per_px, match_um))
-        return field_from_features(blobs, self.ladder[0]) * blobs
+        s_map = field_from_features(blobs, self.ladder[0])
+        return blobs, s_map
 
     def detect(
         self,
@@ -69,13 +70,27 @@ class WavegazerNet(nn.Module):
         match_um: float = MATCH_UM,
         max_peaks: int = 256,
     ) -> PeakSet:
-        """Centroids for the 7 µm scoreboard. Zero trainable weights."""
+        """Centroids for the 7 µm scoreboard. Zero trainable weights.
+
+        Peak *locations* come from φ-DoG (same as the intensity control) so
+        S cannot drop a DoG local max. S only re-ranks for NMS.
+        """
         if x.size(0) != 1:
             raise ValueError("detect() is per-image; batch later")
-        field = self.blob_field(x, um_per_px=um_per_px, match_um=match_um)
+        blobs, s_map = self.blob_field(x, um_per_px=um_per_px, match_um=match_um)
         sig = sigma_px(um_per_px, match_um)
         window = max(int(2 * sig) | 1, 3)
-        peaks = local_maxima(field, window=window, min_score=detect_gate(field))
+        peaks = local_maxima(blobs, window=window, min_score=detect_gate(blobs))
+        if peaks.xy.size(0) == 0:
+            return peaks
+        xs = peaks.xy[:, 0].long().clamp(0, blobs.size(-1) - 1)
+        ys = peaks.xy[:, 1].long().clamp(0, blobs.size(-2) - 1)
+        b_at = blobs[0, 0, ys, xs]
+        s_at = s_map[0, 0, ys, xs]
+        s_lo = s_at.min()
+        s_hi = s_at.max().clamp_min(s_lo + 1e-6)
+        s_n = (s_at - s_lo) / (s_hi - s_lo)
+        peaks = PeakSet(xy=peaks.xy, score=b_at + SEEDS.p_new * s_n)
         if peaks.xy.size(0) > max_peaks:
             top = torch.argsort(peaks.score, descending=True)[:max_peaks]
             peaks = PeakSet(xy=peaks.xy[top], score=peaks.score[top])

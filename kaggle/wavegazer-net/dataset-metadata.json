@@ -1,6 +1,9 @@
 {
   "title": "Wavegazer Net",
+  "subtitle": "FSOT visual U-Net equivalent. Apache License 2.0.",
+  "description": "Apache License 2.0. Zero-trainable-weight visual network (FSOT pin D1D38A). Not FlowNet (optical flow, ICCV 2015). Code: https://github.com/dappalumbo91/Wavegazer-Net",
   "id": "damianpalumbo/wavegazer-net",
   "licenses": [{"name": "apache-2.0"}],
-  "isPrivate": false
+  "isPrivate": false,
+  "keywords": ["computer science", "image segmentation", "biology"]
 }
