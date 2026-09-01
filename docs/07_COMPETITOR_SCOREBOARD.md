@@ -45,17 +45,16 @@ Biohub prize.
 
 ## Live detect numbers (2026-08-31)
 
-16 Biohub volumes, 3-plane union (median z ± 1), multi-scale φ-DoG, YX 7 µm,
+**48 Biohub volumes**, 3-plane union (median z ± 1), multi-scale φ-DoG, YX 7 µm,
 artifact `biohub_peaks_7um.json`:
 
 | Method | Recall | Precision | F1 | n_pred / n_gt |
 |--------|--------|-----------|----|----------------|
-| φ-DoG intensity (control) | **0.803** | 0.078 | 0.132 | 41.6 / 3.5 |
-| Wavegazer (DoG → Optics S → NMS) | 0.729 | 0.076 | 0.129 | 39.1 / 3.5 |
+| φ-DoG intensity (control) | **0.780** | 0.078 | 0.135 | 46.9 / 4.0 |
+| Wavegazer (DoG → Optics S → NMS) | 0.721 | 0.077 | 0.132 | 44.9 / 4.0 |
 
-Recall climbed vs the previous single-plane run (0.67 → 0.73). The same
-protocol lifted the intensity control further (0.67 → 0.80). S is not yet
-winning gate 1. This is **not** a CellMot 0.848 result.
+Gate 1 is not won: S is statistically tied on F1 and slightly behind on
+recall. This is **not** a CellMot 0.848 result.
 
 ## Current artifacts
 
