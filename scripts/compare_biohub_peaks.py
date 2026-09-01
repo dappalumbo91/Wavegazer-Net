@@ -22,7 +22,7 @@ from wavegazer.peaks import PeakSet, detect_gate, local_maxima, match_xy, nms
 from wavegazer.wavegazer_net import WavegazerNet
 
 BIOHUB = Path(r"D:\Kaggle_Biohub_Data\train")
-N_VOLUMES = 16
+N_VOLUMES = 48
 SEED = 20260831
 
 
