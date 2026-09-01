@@ -14,6 +14,14 @@ Zero trainable parameters. Pin **D1D38A**.
 
 See `docs/00_BASELINE_CONTRACT.md` and `docs/06_FSOT_COMPONENT_MAP.md`.
 
+## Where it lives
+
+| Platform | URL |
+|----------|-----|
+| GitHub | https://github.com/dappalumbo91/Wavegazer-Net |
+| Hugging Face | https://huggingface.co/dappalumbo91/Wavegazer-Net |
+| Kaggle | https://www.kaggle.com/datasets/damianpalumbo/wavegazer-net |
+
 ## What is in here
 
 | Path | Role |

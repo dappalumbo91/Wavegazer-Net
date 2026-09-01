@@ -1,5 +1,6 @@
 {
   "title": "Wavegazer Net",
   "id": "damianpalumbo/wavegazer-net",
-  "licenses": [{"name": "CC0-1.0"}]
+  "licenses": [{"name": "CC0-1.0"}],
+  "isPrivate": false
 }

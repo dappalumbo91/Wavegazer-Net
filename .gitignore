@@ -18,3 +18,5 @@ kaggle.json
 .kaggle/
 dist/
 build/
+kaggle/wavegazer-net/**
+!kaggle/wavegazer-net/dataset-metadata.json
