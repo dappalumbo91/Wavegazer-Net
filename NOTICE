@@ -1,0 +1,8 @@
+Wavegazer Net
+Copyright 2026 Damian Arthur Palumbo
+
+This product is licensed under the Apache License, Version 2.0.
+See the LICENSE file.
+
+Pin: D1D38A (FSOT scalar engine). This project is not FlowNet
+(Dosovitskiy et al., ICCV 2015, optical flow).

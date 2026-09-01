@@ -49,7 +49,24 @@ def main() -> None:
             repo_type="model",
             commit_message="Frozen codon buffers (zero trainable)",
         )
-    print("uploaded README + buffers")
+    lic = ROOT / "LICENSE"
+    api.upload_file(
+        path_or_fileobj=str(lic),
+        path_in_repo="LICENSE",
+        repo_id=repo,
+        repo_type="model",
+        commit_message="Apache License 2.0",
+    )
+    notice = ROOT / "NOTICE"
+    if notice.is_file():
+        api.upload_file(
+            path_or_fileobj=str(notice),
+            path_in_repo="NOTICE",
+            repo_id=repo,
+            repo_type="model",
+            commit_message="NOTICE",
+        )
+    print("uploaded README, LICENSE, NOTICE, buffers")
 
 
 if __name__ == "__main__":

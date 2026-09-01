@@ -2,8 +2,14 @@
 name = "wavegazer"
 version = "0.1.0"
 description = "Wavegazer Net: FSOT visual equivalent of U-Net. Frozen canonical U-Net baseline plus a zero-trainable-parameter seed-spine network."
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [{ name = "Damian Arthur Palumbo" }]
 requires-python = ">=3.11"
 dependencies = ["numpy>=1.26"]
+classifiers = [
+  "License :: OSI Approved :: Apache Software License",
+]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
