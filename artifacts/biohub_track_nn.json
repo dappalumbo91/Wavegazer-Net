@@ -1,0 +1,49 @@
+{
+  "metric": "greedy_nn_adj_edge_jaccard",
+  "linker": "next_frame_nn",
+  "max_link_um": 21.991148575128552,
+  "n_volumes": 1,
+  "volumes": [
+    "44b6_0113de3b"
+  ],
+  "wavegazer": {
+    "per": [
+      {
+        "n_gt_nodes": 52,
+        "n_pred_nodes": 27534,
+        "n_gt_edges": 50,
+        "n_pred_edges": 26193,
+        "node_tp": 52,
+        "node_recall": 1.0,
+        "edge_tp": 38,
+        "edge_fp": 18,
+        "edge_fn": 12,
+        "edge_jaccard": 0.5588235294117647,
+        "t_true": 25755.0,
+        "adj_edge_jaccard": 0.5549635136524034,
+        "t_frames": 100
+      }
+    ],
+    "mean": {
+      "n_gt_nodes": 52.0,
+      "n_pred_nodes": 27534.0,
+      "n_gt_edges": 50.0,
+      "n_pred_edges": 26193.0,
+      "node_tp": 52.0,
+      "node_recall": 1.0,
+      "edge_tp": 38.0,
+      "edge_fp": 18.0,
+      "edge_fn": 12.0,
+      "edge_jaccard": 0.5588235294117647,
+      "t_true": 25755.0,
+      "adj_edge_jaccard": 0.5549635136524034,
+      "t_frames": 100.0
+    }
+  },
+  "note": "Greedy t\u2192t+1 nearest neighbor, max_um=\u03c0\u00b77. Not transformer+ILP. adj_edge_jaccard uses estimated_number_of_nodes. No division term.",
+  "competition_context": {
+    "public_floor_full_score": 0.848,
+    "public_top_full_score": 0.985,
+    "full_metric": "adj_edge_jaccard + 0.1*division_jaccard"
+  }
+}

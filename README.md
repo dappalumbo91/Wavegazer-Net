@@ -39,7 +39,7 @@ See `docs/00_BASELINE_CONTRACT.md` and `docs/06_FSOT_COMPONENT_MAP.md`.
 | `vendor/dynamic-network-architectures/` | MIC-DKFZ PlainConvUNet used by nnU-Net (Apache-2.0) |
 | `src/wavegazer/` | BaselineUNet (control) + WavegazerNet (FSOT) + losses/metrics |
 | `docs/06_FSOT_COMPONENT_MAP.md` | Box-by-box replacement table |
-| `docs/07_COMPETITOR_SCOREBOARD.md` | Field metrics and the order of floors to beat |
+| `docs/07_COMPETITOR_SCOREBOARD.md` | Field metrics: 3D detect **1.0**, greedy NN `adj_edge_jaccard` **0.555** vs floor **0.848** |
 | `vendor/fsot/` | The six FSOT GitHub repos (Lean hub is the math authority) |
 | `scripts/dump_baseline.py` | Writes `artifacts/baseline_freeze.json` |
 | `scripts/dump_wavegazer.py` | Writes `artifacts/wavegazer_vs_unet.json` |
@@ -73,6 +73,8 @@ python -m venv .venv
 .\.venv\Scripts\python.exe scripts\compare_synthetic.py
 .\.venv\Scripts\python.exe scripts\compare_biohub.py
 .\.venv\Scripts\python.exe scripts\compare_biohub_peaks.py
+.\.venv\Scripts\python.exe scripts\compare_biohub_3d.py
+.\.venv\Scripts\python.exe scripts\compare_biohub_track.py
 ```
 
 `dump_baseline.py` records parameter counts, feature-map shapes, a dummy

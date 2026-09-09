@@ -6,6 +6,45 @@ gates. Do not quote a later gate as won if an earlier one is red.
 
 Authority pin **D1D38A**. Zero trainable weights on the seed spine.
 
+## Versus the competition (plain)
+
+The Biohub/CellMot prize is **not** Dice and **not** 7 µm F1 on a 2D slice.
+
+```
+pixels → peaks → centroids (7 µm, 3D anisotropic)
+      → edges + ILP → adj_edge_jaccard + 0.1×division
+```
+
+| Rung | Metric | Wavegazer now | Competition |
+|------|--------|---------------|-------------|
+| Detect, 2D YX @ 7 µm | recall | **0.92** (tied φ-DoG) | CellMot U-Net ~**0.98** on thr0.99 |
+| Detect, 3D 7 µm | recall | **1.00** (16 vol, σ NMS) | same 7 µm rule, all Z |
+| Density vs `T_true` | nodes / frame | **~968** vs **~258** | U-Net thr0.99 sits near `T_true` |
+| Top-`T_true` prune | 3D recall | **0.66** (score rank) | trained peak head keeps GT in budget |
+| Linking | edge Jaccard | greedy NN **0.559** (1 video) | transformer edges + ILP |
+| Official-shaped | adj_edge_jaccard | **0.555** (1 video, no div) | floor **0.848**, top **~0.985** |
+| Local hard5 (CellMot U-Net) | same official metric | — | baseline 0.71, FT+short-track **0.74** |
+
+**Where we sit:** detect box is green. 3D anisotropic 7 µm recall is **1.0** on
+16 train volumes after NMS at σ (`MATCH_UM/π`), not at the match radius.
+That matches CellMot’s reported detect recall (~0.98). It is still **not**
+a 0.848-class number.
+
+**Where we have to go:**
+
+1. **Keep 7 µm cell NMS for linking.** σ NMS is the detect-recall setting
+   (1.0, ~968/frame, density would cap adj at ~0.72). Full-video 7 µm NMS
+   sat at 27534 vs `T_true` 25755 on `44b6_0113de3b` — density is fine.
+   Seed rankers and Z-focus cannot prune σ-NMS extras without losing GT.
+2. **Linking (the live gap to 0.848).** Greedy t→t+1 NN: node recall
+   **1.0**, 38/50 GT edges TP, 18 FP, 12 FN → J **0.559** →
+   `adj_edge_jaccard` **0.555**. Killing FP alone → ~0.76; recovering FN
+   alone → ~0.74. Need both: CellMot transformer+ILP, not a tighter DoG.
+   Divisions not scored (0.1×).
+3. **Then** public LB vs 0.848 / 0.985.
+
+Do not quote 1.0 detect recall as “near 0.848”. Different units.
+
 ## Why not one number
 
 There are two different hired jobs:
@@ -57,8 +96,39 @@ closed. Z-max recovered off-plane cells (`144b256d` 0 → 0.5).
 | Wavegazer (DoG peaks, S rank) | **0.921** | 0.042 | 0.078 | 95.9 / 4.0 |
 
 Gate 1: **matched at 0.92 recall**. Extra peaks (precision 0.04) are expected
-on sparse GT. Next: prune extras without losing the 0.92, then a trained
-U-Net peak head. Not a CellMot 0.848 result.
+on sparse GT. Not a CellMot 0.848 result.
+
+## Live 3D detect (2026-09-09)
+
+**16 Biohub volumes**, all 64 Z at the busiest t, anisotropic 7 µm
+(YX 0.40625, Z 1.625). Artifact `biohub_peaks_3d_7um.json`.
+
+NMS at the **match** radius (7 µm) merged a true cell with a brighter
+neighbor 9 µm away (`44b6_2f31fc2f`, recall 0.979). NMS at **σ**
+(`MATCH_UM/π ≈ 2.23 µm`), same as 2D `detect()`, recovered it.
+
+| Method | Recall | n_pred / frame | vs ~258 `T_true/T` |
+|--------|--------|----------------|---------------------|
+| 7 µm NMS (cell packing) | 0.979 | 390 | 1.5×, adj factor ~0.95 |
+| σ NMS (same as 2D detect) | **1.000** | 968 | 3.8×, adj factor ~0.72 |
+| + Z-focus then 7 µm NMS | 0.911 | 331 | closer density, **recall loss** |
+| top `T_true/T` by blob or S | 0.62–0.66 | ~258 | S is not a CellMot ranker |
+
+Detect gate: **green** at σ NMS. Z-focus and seed rankers do not recover
+`T_true` without dropping labeled cells. Full-video linking used **7 µm
+NMS** so density stays near `T_true`.
+
+## Live linking (2026-09-09)
+
+One full video, greedy next-frame NN, max link `π·7` µm, 7 µm cell NMS.
+Artifact `biohub_track_nn.json`. Not transformer+ILP. No division term.
+
+| Video | node rec | edge TP/FP/FN | J | T_pred / T_true | J_adj |
+|-------|----------|---------------|---|-----------------|-------|
+| `44b6_0113de3b` | **1.00** | 38 / 18 / 12 | 0.559 | 27534 / 25755 | **0.555** |
+
+Competition: floor **0.848**, top **~0.985**. This 0.555 is the same unit
+as the leaderboard (minus 0.1×div). Gap is **edge quality**, not detect.
 
 ## Current artifacts
 
@@ -66,4 +136,6 @@ U-Net peak head. Not a CellMot 0.848 result.
 |------|------|
 | `artifacts/synthetic_cells_compare.json` | dense Dice |
 | `artifacts/biohub_compare.json` | dense disks on Z-max (proxy, class-imbalanced) |
-| `artifacts/biohub_peaks_7um.json` | **this** detect gate |
+| `artifacts/biohub_peaks_7um.json` | 2D YX detect |
+| `artifacts/biohub_peaks_3d_7um.json` | **3D 7 µm detect** |
+| `artifacts/biohub_track_nn.json` | greedy NN linking (when run) |

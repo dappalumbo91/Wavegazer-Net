@@ -26,6 +26,16 @@ def sigma_px(um_per_px: float = DEFAULT_YX_UM, match_um: float = MATCH_UM) -> fl
     return match_um / (um_per_px * SEEDS.pi)
 
 
+def sigma_um(match_um: float = MATCH_UM) -> float:
+    """NMS radius in µm. Same length as σ_px; not the 7 µm *match* radius.
+
+    Matching two peaks that sit inside the match ball requires they both
+    survive NMS. Using match_um here merges a true cell with a brighter
+    neighbor and drops recall (see 44b6_2f31fc2f).
+    """
+    return match_um / SEEDS.pi
+
+
 def _gauss_kernel_1d(sigma: float, device, dtype) -> torch.Tensor:
     radius = max(int(math.ceil(3.0 * sigma)), 1)
     x = torch.arange(-radius, radius + 1, device=device, dtype=dtype)

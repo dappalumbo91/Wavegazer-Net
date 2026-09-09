@@ -126,6 +126,100 @@ def match_xy(
     }
 
 
+def dist_um(
+    a: torch.Tensor,
+    b: torch.Tensor,
+    *,
+    yx_um: float,
+    z_um: float,
+) -> torch.Tensor:
+    """Anisotropic µm distance. a,b (..., 3) as (x, y, z) pixels."""
+    scale = a.new_tensor([yx_um, yx_um, z_um])
+    return torch.cdist(a.float() * scale, b.float() * scale, p=2)
+
+
+def match_xyz_um(
+    pred_xyz: torch.Tensor,
+    gt_xyz: torch.Tensor,
+    max_um: float,
+    *,
+    yx_um: float,
+    z_um: float,
+) -> dict[str, float]:
+    """Competition node match: 3D Euclidean in µm, anisotropic voxel size."""
+    n_gt = int(gt_xyz.size(0))
+    n_pr = int(pred_xyz.size(0))
+    empty = {
+        "n_gt": n_gt,
+        "n_pred": n_pr,
+        "tp": 0,
+        "recall": 1.0 if n_gt == 0 and n_pr == 0 else 0.0,
+        "precision": 1.0 if n_pr == 0 and n_gt == 0 else (0.0 if n_pr else 1.0),
+        "f1": 1.0 if n_gt == 0 and n_pr == 0 else 0.0,
+    }
+    if n_gt == 0:
+        empty["recall"] = 1.0 if n_pr == 0 else 0.0
+        empty["precision"] = 1.0 if n_pr == 0 else 0.0
+        empty["f1"] = empty["recall"]
+        return empty
+    if n_pr == 0:
+        return empty
+    d = dist_um(pred_xyz, gt_xyz, yx_um=yx_um, z_um=z_um)
+    used_p = torch.zeros(n_pr, dtype=torch.bool, device=d.device)
+    used_g = torch.zeros(n_gt, dtype=torch.bool, device=d.device)
+    tp = 0
+    flat = d.reshape(-1)
+    order = torch.argsort(flat)
+    for idx in order.tolist():
+        if float(flat[idx]) > max_um:
+            break
+        p, g = divmod(int(idx), n_gt)
+        if used_p[p] or used_g[g]:
+            continue
+        used_p[p] = True
+        used_g[g] = True
+        tp += 1
+        if tp == min(n_pr, n_gt):
+            break
+    rec = tp / n_gt
+    prec = tp / n_pr
+    f1 = 0.0 if rec + prec == 0 else 2 * rec * prec / (rec + prec)
+    return {
+        "n_gt": n_gt,
+        "n_pred": n_pr,
+        "tp": tp,
+        "recall": rec,
+        "precision": prec,
+        "f1": f1,
+    }
+
+
+def nms_xyz_um(
+    xyz: torch.Tensor,
+    score: torch.Tensor,
+    radius_um: float,
+    *,
+    yx_um: float,
+    z_um: float,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Greedy 3D NMS in µm."""
+    if xyz.numel() == 0:
+        return xyz, score
+    order = torch.argsort(score, descending=True)
+    xyz = xyz[order]
+    score = score[order]
+    keep: list[int] = []
+    scale = xyz.new_tensor([yx_um, yx_um, z_um])
+    for i in range(xyz.size(0)):
+        if keep:
+            delta = (xyz[i] - xyz[torch.tensor(keep, device=xyz.device)]) * scale
+            if torch.any((delta * delta).sum(dim=-1).sqrt() <= radius_um):
+                continue
+        keep.append(i)
+    idx = torch.tensor(keep, device=xyz.device, dtype=torch.long)
+    return xyz[idx], score[idx]
+
+
 def sparse_gate(field: torch.Tensor, *, k: float | None = None) -> torch.Tensor:
     """mean + k·std. Default k=φ (dense-sparse masks). Detect uses √φ."""
     if k is None:

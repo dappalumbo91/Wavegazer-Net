@@ -29,6 +29,62 @@ def test_detect_hits_synthetic_centroid():
     assert dist <= sigma_px(0.40625, 7.0)
 
 
+def test_match_xyz_um_anisotropic():
+    from wavegazer.peaks import match_xyz_um
+
+    # 7 µm in Z at 1.625 µm/px is ~4.3 px; same 7 µm in YX is ~17 px.
+    gt = torch.tensor([[10.0, 10.0, 5.0]])
+    pred_hit = torch.tensor([[10.0, 10.0, 8.0]])  # 3 z * 1.625 = 4.875 µm
+    pred_miss = torch.tensor([[10.0, 10.0, 15.0]])  # 10 z * 1.625 = 16.25 µm
+    h = match_xyz_um(pred_hit, gt, 7.0, yx_um=0.40625, z_um=1.625)
+    m = match_xyz_um(pred_miss, gt, 7.0, yx_um=0.40625, z_um=1.625)
+    assert h["tp"] == 1
+    assert m["tp"] == 0
+
+
+def test_nms_sigma_keeps_peaks_inside_match_ball():
+    """7 µm NMS merges a true cell with a brighter 5 µm neighbor; σ does not."""
+    from wavegazer.blob import MATCH_UM, sigma_um
+    from wavegazer.peaks import nms_xyz_um
+
+    yx, z = 0.40625, 1.625
+    dx = 5.0 / yx  # 5 µm in X
+    xyz = torch.tensor([[0.0, 0.0, 0.0], [dx, 0.0, 0.0]])
+    score = torch.tensor([1.0, 0.8])
+    kept, _ = nms_xyz_um(xyz, score, sigma_um(MATCH_UM), yx_um=yx, z_um=z)
+    merged, _ = nms_xyz_um(xyz, score, MATCH_UM, yx_um=yx, z_um=z)
+    assert kept.size(0) == 2
+    assert merged.size(0) == 1
+
+
+def test_link_nn_and_sparse_edge_jaccard():
+    from wavegazer.track import link_nn, score_edges
+
+    yx, z = 0.40625, 1.625
+    # Two GT nodes, one edge. Pred has the same two plus a distractor.
+    pred_xyz = torch.tensor(
+        [[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [80.0, 80.0, 10.0]],
+    )
+    pred_t = torch.tensor([0.0, 1.0, 0.0])
+    gt_xyz = torch.tensor([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
+    gt_t = torch.tensor([0.0, 1.0])
+    gt_edges = torch.tensor([[0, 1]])
+    xyz_t = pred_xyz[pred_t == 0]
+    xyz_tp = pred_xyz[pred_t == 1]
+    edges = link_nn(xyz_t, xyz_tp, max_um=7.0, yx_um=yx, z_um=z)
+    # Map plane-local indices back to pred rows: t=0 rows 0 and 2, t=1 row 1.
+    t_idx = torch.where(pred_t == 0)[0]
+    p_idx = torch.where(pred_t == 1)[0]
+    pred_edges = torch.stack([t_idx[edges[:, 0]], p_idx[edges[:, 1]]], dim=1)
+    c = score_edges(
+        pred_xyz, pred_t, pred_edges, gt_xyz, gt_t, gt_edges, yx_um=yx, z_um=z,
+    )
+    assert c.tp == 1
+    assert c.fn == 0
+    assert c.node_tp == 2
+    assert c.edge_jaccard == 1.0
+
+
 def test_match_xy_perfect():
     gt = torch.tensor([[10.0, 10.0], [40.0, 40.0]])
     pred = torch.tensor([[11.0, 9.0], [39.0, 41.0], [80.0, 80.0]])

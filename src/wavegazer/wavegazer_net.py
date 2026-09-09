@@ -18,11 +18,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .blob import DEFAULT_YX_UM, MATCH_UM, multi_scale_blob_map, sigma_px
+from .blob import DEFAULT_YX_UM, MATCH_UM, multi_scale_blob_map, sigma_px, sigma_um
 from .fsot_routes import VISUAL_FOREGROUND_SIGN, VISUAL_LADDER
 from .fsot_seeds import SEEDS
 from .operators import CodonMixer, collapse_logits, field_from_features
-from .peaks import PeakSet, detect_gate, local_maxima, nms
+from .peaks import PeakSet, detect_gate, local_maxima, nms, nms_xyz_um
 
 
 def _luma(x: torch.Tensor) -> torch.Tensor:
@@ -95,6 +95,57 @@ class WavegazerNet(nn.Module):
             top = torch.argsort(peaks.score, descending=True)[:max_peaks]
             peaks = PeakSet(xy=peaks.xy[top], score=peaks.score[top])
         return nms(peaks, radius_px=sig)
+
+    def detect_volume(
+        self,
+        vol: torch.Tensor,
+        *,
+        yx_um: float = DEFAULT_YX_UM,
+        z_um: float = 1.625,
+        match_um: float = MATCH_UM,
+        nms_um: float | None = None,
+        max_peaks_per_plane: int = 256,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """3D centroids. vol is (Z,Y,X) or (1,Z,Y,X).
+
+        Default NMS is σ (same as 2D detect): two peaks inside the 7 µm match
+        ball can both survive. Pass nms_um=match_um for one centroid per cell
+        (better density, can merge a dim GT into a brighter neighbor).
+        """
+        if vol.dim() == 4:
+            vol = vol[0]
+        if vol.dim() != 3:
+            raise ValueError(f"detect_volume expects (Z,Y,X), got {tuple(vol.shape)}")
+        z_n = int(vol.size(0))
+        sig = sigma_px(yx_um, match_um)
+        window = max(int(2 * sig) | 1, 3)
+        xs, ys, zs, sc = [], [], [], []
+        for z in range(z_n):
+            img = vol[z][None, None]
+            blobs, s_map = self.blob_field(img, um_per_px=yx_um, match_um=match_um)
+            peaks = local_maxima(blobs, window=window, min_score=detect_gate(blobs))
+            if peaks.xy.size(0) == 0:
+                continue
+            xi = peaks.xy[:, 0].long().clamp(0, blobs.size(-1) - 1)
+            yi = peaks.xy[:, 1].long().clamp(0, blobs.size(-2) - 1)
+            b_at = blobs[0, 0, yi, xi]
+            s_at = s_map[0, 0, yi, xi]
+            s_n = (s_at - s_at.min()) / (s_at.max().clamp_min(s_at.min() + 1e-6) - s_at.min() + 1e-8)
+            score = b_at + SEEDS.p_new * s_n
+            if score.numel() > max_peaks_per_plane:
+                top = torch.argsort(score, descending=True)[:max_peaks_per_plane]
+                peaks = PeakSet(xy=peaks.xy[top], score=score[top])
+                score = peaks.score
+            xs.append(peaks.xy[:, 0])
+            ys.append(peaks.xy[:, 1])
+            zs.append(torch.full((peaks.xy.size(0),), float(z), device=vol.device))
+            sc.append(score)
+        if not xs:
+            return vol.new_zeros(0, 3), vol.new_zeros(0)
+        xyz = torch.stack([torch.cat(xs), torch.cat(ys), torch.cat(zs)], dim=1)
+        score = torch.cat(sc)
+        radius = sigma_um(match_um) if nms_um is None else nms_um
+        return nms_xyz_um(xyz, score, radius, yx_um=yx_um, z_um=z_um)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if x.size(1) != self.in_channels:
