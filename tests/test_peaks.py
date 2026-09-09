@@ -66,7 +66,8 @@ def test_codon_codes_differ_on_two_blobs():
     img[1, 24, 24] = 0.3
     xyz = torch.tensor([[8.0, 8.0, 1.0], [24.0, 24.0, 1.0]])
     codes = net.codon_codes(img, xyz)
-    assert codes.size() == (2, 64)
+    assert codes.size(0) == 2
+    assert codes.size(1) == 64 * 3
     assert not torch.allclose(codes[0], codes[1])
 
 
@@ -80,6 +81,19 @@ def test_codon_ident_prefers_same_vector():
     opp = codon_ident(a, -a)
     assert float(same[0, 0]) > float(scaled[0, 0])
     assert float(same[0, 0]) > float(opp[0, 0])
+
+
+def test_patch_ncc_prefers_same_blob():
+    from wavegazer.track import patch_ncc
+
+    vol = torch.zeros(3, 32, 32)
+    vol[1, 8:12, 8:12] = 1.0
+    vol[2, 9:13, 9:13] = 1.0
+    vol[2, 20:22, 20:22] = 0.4
+    a = torch.tensor([[10.0, 10.0, 1.0]])
+    b = torch.tensor([[11.0, 11.0, 2.0], [21.0, 21.0, 2.0]])
+    ncc = patch_ncc(vol, a, vol, b, radius=5)
+    assert float(ncc[0, 0]) > float(ncc[0, 1])
 
 
 def test_link_fsot_codon_beats_near_clutter():
@@ -105,6 +119,34 @@ def test_link_fsot_codon_beats_near_clutter():
     )
     assert int(nn[0, 1]) == 1
     assert int(fs[0, 1]) == 0
+
+
+def test_filter_short_tracks_drops_specks():
+    from wavegazer.track import filter_short_tracks, min_track_len, select_nodes
+
+    # One long chain of 8 and a 2-node speck.
+    edges = torch.tensor(
+        [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 7], [8, 9]],
+    )
+    xyz = torch.zeros(10, 3)
+    t = torch.arange(10).float()
+    keep, e2 = filter_short_tracks(10, edges, min_len=7)
+    assert int(keep[:8].sum()) == 8
+    assert int(keep[8:].sum()) == 0
+    xyz2, t2, e3 = select_nodes(xyz, t, e2, keep)
+    assert xyz2.size(0) == 8
+    assert e3.size(0) == 7
+
+
+def test_snap_xyz_moves_to_bright_pixel():
+    from wavegazer.track import snap_xyz
+
+    vol = torch.zeros(3, 8, 8)
+    vol[1, 4, 5] = 1.0
+    xyz = torch.tensor([[4.0, 4.0, 1.0]])
+    out = snap_xyz(vol, xyz, xy_r=1, z_r=1)
+    assert int(out[0, 0]) == 5
+    assert int(out[0, 1]) == 4
 
 
 def test_link_fsot_identity_beats_near_clutter():

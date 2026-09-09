@@ -21,8 +21,8 @@ pixels → peaks → centroids (7 µm, 3D anisotropic)
 | Detect, 3D 7 µm | recall | **1.00** (16 vol, σ NMS) | same 7 µm rule, all Z |
 | Density vs `T_true` | nodes / frame | **~968** vs **~258** | U-Net thr0.99 sits near `T_true` |
 | Top-`T_true` prune | 3D recall | **0.66** (score rank) | trained peak head keeps GT in budget |
-| Linking | edge Jaccard | FSOT bleed **0.619** / **0.500** (2 videos) vs NN 0.559 / 0.471 | transformer edges + ILP |
-| Official-shaped | adj_edge_jaccard | FSOT **0.615** / **0.481** (mean **0.548**) | floor **0.848**, top **~0.985** |
+| Linking | edge Jaccard | patch-NCC lock **0.772** best / **0.600** mean (4 videos) | transformer edges + ILP |
+| Official-shaped | adj_edge_jaccard | **0.767** best / **0.587** mean (4 videos) | floor **0.848**, top **~0.985** |
 | Local hard5 (CellMot U-Net) | same official metric | — | baseline 0.71, FT+short-track **0.74** |
 
 **Where we sit:** detect box is green. 3D anisotropic 7 µm recall is **1.0** on
@@ -36,17 +36,13 @@ a 0.848-class number.
    (1.0, ~968/frame, density would cap adj at ~0.72). Full-video 7 µm NMS
    sat at 27534 vs `T_true` 25755 on `44b6_0113de3b` — density is fine.
    Seed rankers and Z-focus cannot prune σ-NMS extras without losing GT.
-2. **Linking (still the gap to 0.848).** Bleed κ + Genetics codon ident
-   beats greedy NN: **0.615 vs 0.555** and **0.481 vs 0.453**. Codon 3×3
-   (frozen, trit-bilinear × relative L1, sharpened `^φ`) prefers the true
-   partner on **7/12** FN pairs — the right object, the transformer’s
-   “what.” It does not change the assignment: ident ratio (~1.25) is
-   below the distance ratio (~1.55) of a 3 µm speck vs a 5 µm cell.
-   Dropping the spatial term to let codon lead **hurt** video 2
-   (0.500→0.470). That is the free-param gap: CellMot’s edge head is a
-   fitted appearance metric; 64 codon filters are not yet that metric.
-   Next: richer on-spine appearance (multi-scale codon / Fluid Z-stack)
-   or ILP on these costs. Not a tighter DoG. Divisions not scored.
+2. **Linking (still the gap to 0.848).** Luma-patch NCC lock inside 7 µm
+   is the first identity that moves the official number: easy video
+   **0.767** (was 0.555 NN). 4-video mean **0.587** vs NN **0.529**.
+   Not 0.848. Patch lock **loses to NN** on `0c582fdc`. Remaining 6 FN /
+   7 FP on the easy video: J=44/57=0.772; killing those 7 FP with no TP
+   loss would be 0.88. We cannot tell the 7 FP from TP without a stronger
+   appearance metric. Divisions not scored.
 3. **Then** public LB vs 0.848 / 0.985.
 
 Do not quote 1.0 detect recall as “near 0.848”. Different units.
@@ -126,20 +122,22 @@ NMS** so density stays near `T_true`.
 
 ## Live linking (2026-09-09)
 
-Full videos, 7 µm cell NMS. Artifact `biohub_track_nn.json`.
-No transformer+ILP. No division term.
+Luma-patch NCC lock inside 7 µm, then bleed κ. 7 µm cell NMS.
+Artifact `biohub_track_nn.json`. No division term.
 
-| Video | linker | node rec | TP/FP/FN | J | T_pred / T_true | J_adj |
-|-------|--------|----------|----------|---|-----------------|-------|
-| `44b6_0113de3b` | greedy NN `π·7` | 1.00 | 38/18/12 | 0.559 | 27534/25755 | 0.555 |
-| `44b6_0113de3b` | **FSOT bleed `φ·7`** | 1.00 | 39/13/11 | **0.619** | 27534/25755 | **0.615** |
-| `44b6_0b24845f` | greedy NN | 0.90 | 32/19/17 | 0.471 | 45136/32795 | 0.453 |
-| `44b6_0b24845f` | **FSOT bleed** | 0.90 | 32/15/17 | **0.500** | 45136/32795 | **0.481** |
+| Video | node rec | NN `J_adj` | FSOT `J_adj` | TP/FP/FN |
+|-------|----------|------------:|-------------:|----------|
+| `44b6_0113de3b` | 1.00 | 0.555 | **0.767** | 44/7/6 |
+| `44b6_0b24845f` | 0.90 | 0.453 | **0.481** | 32/15/17 |
+| `44b6_0c582fdc` | 0.97 | **0.591** | 0.542 | 53/25/17 |
+| `44b6_0db75fae` | 1.00 | 0.519 | **0.557** | 116/52/35 |
+| mean | 0.97 | 0.529 | **0.587** | |
 
-Mean FSOT `adj_edge_jaccard` **0.548** vs NN **0.504**. Floor **0.848**.
-The lift is real and on-spine (Quantum κ + collapse ident). Remaining FN
-are nearer extras; remaining density miss on the second video is 1.38×
-`T_true`.
+Best video **0.767**. Floor **0.848** is **not beaten**. Patch NCC is the
+first identity that actually moves assignments (easy video 0.555→0.767).
+It **hurts** `0c582fdc` vs NN. Hard videos still miss nodes (0.90) or
+over-detect (1.3× `T_true`). Snap-to-bright and φ⁴ short-track both
+dropped labeled cells.
 
 ## Current artifacts
 

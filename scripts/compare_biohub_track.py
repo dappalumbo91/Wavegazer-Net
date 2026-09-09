@@ -17,12 +17,20 @@ import numpy as np
 import torch
 import zarr
 
-from wavegazer.blob import MATCH_UM
-from wavegazer.track import link_fsot, link_nn, max_link_um, max_link_um_fsot, score_edges
+from wavegazer.blob import MATCH_UM, sigma_px
+from wavegazer.fsot_seeds import SEEDS
+from wavegazer.track import (
+    link_fsot,
+    link_nn,
+    max_link_um,
+    max_link_um_fsot,
+    patch_ncc,
+    score_edges,
+)
 from wavegazer.wavegazer_net import WavegazerNet
 
 BIOHUB = Path(r"D:\Kaggle_Biohub_Data\train")
-N_VOLUMES = 2
+N_VOLUMES = 4
 YX_UM = 0.40625
 Z_UM = 1.625
 
@@ -125,17 +133,22 @@ def main() -> None:
         pred_xyz_t = torch.cat(pred_xyz, dim=0)
         pred_t_t = torch.cat(pred_t, dim=0)
 
+        patch_r = max(3, int(sigma_px(YX_UM, MATCH_UM) * 2) | 1)
+
         def _edges(use_fsot: bool) -> torch.Tensor:
             pred_edges = []
             vel = None
             for t in range(t_n - 1):
                 a, b = xyz_by_t[t], xyz_by_t[t + 1]
                 if use_fsot:
+                    vol_t = torch.from_numpy(_norm_vol(np.asarray(arr[t])))
+                    vol_tp = torch.from_numpy(_norm_vol(np.asarray(arr[t + 1])))
+                    patch = patch_ncc(vol_t, a, vol_tp, b, radius=patch_r)
                     pairs, vel = link_fsot(
                         a, b, max_um=fs_um, yx_um=YX_UM, z_um=Z_UM,
                         s_t=score_by_t[t], s_tp=score_by_t[t + 1],
                         codon_t=codon_by_t[t], codon_tp=codon_by_t[t + 1],
-                        vel_t=None, match_um=MATCH_UM,
+                        patch=patch, vel_t=None, match_um=MATCH_UM,
                     )
                 else:
                     pairs = link_nn(a, b, max_um=link_um, yx_um=YX_UM, z_um=Z_UM)

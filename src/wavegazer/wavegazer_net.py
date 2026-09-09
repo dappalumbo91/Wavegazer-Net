@@ -161,17 +161,34 @@ class WavegazerNet(nn.Module):
         vol = vol.to(dtype=spatial.dtype)
         z_n, h, w = int(vol.size(0)), int(vol.size(1)), int(vol.size(2))
         zi = xyz[:, 2].long().clamp(0, z_n - 1)
-        codes = spatial.new_zeros(xyz.size(0), CODON_CHANNELS)
+        k = int(2 * SEEDS.phi + 1) | 1
+        planes: dict[int, torch.Tensor] = {}
+
+        def _feat(z: int) -> torch.Tensor:
+            if z not in planes:
+                img = vol[z][None, None]
+                f = F.conv2d(img, spatial, padding=1)
+                f = F.avg_pool2d(f, kernel_size=k, stride=1, padding=k // 2)[0]
+                planes[z] = f
+            return planes[z]
+
+        # Fluid Z-stack: center and ±1. A cell is a 3D blob; a speck is not.
+        codes = spatial.new_zeros(xyz.size(0), CODON_CHANNELS * 3)
         for z in zi.unique().tolist():
             sel = zi == z
-            img = vol[int(z)][None, None]
-            feat = F.conv2d(img, spatial, padding=1)
-            # Cell-scale pool: window 2φ+1 (odd). 3×3 codon is local; this is the blob.
-            k = int(2 * SEEDS.phi + 1) | 1
-            feat = F.avg_pool2d(feat, kernel_size=k, stride=1, padding=k // 2)[0]
             xs = xyz[sel, 0].long().clamp(0, w - 1)
             ys = xyz[sel, 1].long().clamp(0, h - 1)
-            codes[sel] = feat[:, ys, xs].transpose(0, 1).contiguous()
+            zm = max(0, int(z) - 1)
+            zp = min(z_n - 1, int(z) + 1)
+            stack = torch.cat(
+                [
+                    _feat(zm)[:, ys, xs].transpose(0, 1),
+                    _feat(int(z))[:, ys, xs].transpose(0, 1),
+                    _feat(zp)[:, ys, xs].transpose(0, 1),
+                ],
+                dim=-1,
+            )
+            codes[sel] = stack.contiguous()
         return codes
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

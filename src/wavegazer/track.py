@@ -14,6 +14,8 @@ import torch
 from .blob import MATCH_UM, sigma_um
 from .codon_kernels import trit_similarity_matrix
 from .fsot_seeds import COLLAPSE_THRESHOLD, COMPACTIFICATION_CEILING, SEEDS
+
+INV_PHI = 1.0 / SEEDS.phi
 from .peaks import dist_um
 
 _TRIT_SIM: torch.Tensor | None = None
@@ -24,6 +26,52 @@ def _trit_sim(device, dtype) -> torch.Tensor:
     if _TRIT_SIM is None or _TRIT_SIM.device != device or _TRIT_SIM.dtype != dtype:
         _TRIT_SIM = trit_similarity_matrix().to(device=device, dtype=dtype)
     return _TRIT_SIM
+
+
+def patch_ncc(
+    vol_t: torch.Tensor,
+    xyz_t: torch.Tensor,
+    vol_tp: torch.Tensor,
+    xyz_tp: torch.Tensor,
+    *,
+    radius: int,
+) -> torch.Tensor:
+    """Normalized cross-correlation of luma patches. Cell-scale identity, no weights."""
+    if vol_t.dim() == 4:
+        vol_t = vol_t[0]
+    if vol_tp.dim() == 4:
+        vol_tp = vol_tp[0]
+
+    def _pats(vol: torch.Tensor, xyz: torch.Tensor) -> torch.Tensor:
+        if xyz.numel() == 0:
+            return vol.new_zeros(0, (2 * radius + 1) ** 2)
+        z_n, h, w = int(vol.size(0)), int(vol.size(1)), int(vol.size(2))
+        r = radius
+        plane_pad = {}
+        out = vol.new_zeros(xyz.size(0), (2 * r + 1) ** 2)
+        zi = xyz[:, 2].long().clamp(0, z_n - 1)
+        for z in zi.unique().tolist():
+            if z not in plane_pad:
+                plane_pad[z] = torch.nn.functional.pad(vol[int(z)], (r, r, r, r))
+            sel = zi == z
+            pad = plane_pad[z]
+            xs = xyz[sel, 0].long() + r
+            ys = xyz[sel, 1].long() + r
+            rows = []
+            for x, y in zip(xs.tolist(), ys.tolist()):
+                x = min(max(x, r), pad.size(1) - r - 1)
+                y = min(max(y, r), pad.size(0) - r - 1)
+                rows.append(pad[y - r : y + r + 1, x - r : x + r + 1].reshape(-1))
+            out[sel] = torch.stack(rows, dim=0)
+        return out
+
+    a = _pats(vol_t, xyz_t)
+    b = _pats(vol_tp, xyz_tp)
+    a = a - a.mean(dim=-1, keepdim=True)
+    b = b - b.mean(dim=-1, keepdim=True)
+    a = a / a.norm(dim=-1, keepdim=True).clamp_min(1e-6)
+    b = b / b.norm(dim=-1, keepdim=True).clamp_min(1e-6)
+    return ((a @ b.transpose(0, 1)).clamp(-1.0, 1.0) + 1.0) * 0.5
 
 
 def codon_ident(codes_t: torch.Tensor, codes_tp: torch.Tensor) -> torch.Tensor:
@@ -40,11 +88,17 @@ def codon_ident(codes_t: torch.Tensor, codes_tp: torch.Tensor) -> torch.Tensor:
     nrm = codes_t.abs().sum(dim=-1)[:, None] + codes_tp.abs().sum(dim=-1)[None, :]
     rel = l1 / nrm.clamp_min(1e-6)
     mag = 1.0 / (1.0 + rel / COLLAPSE_THRESHOLD)
-    u = torch.nn.functional.normalize(codes_t, dim=-1, eps=1e-6)
-    v = torch.nn.functional.normalize(codes_tp, dim=-1, eps=1e-6)
-    sim = _trit_sim(u.device, u.dtype)
-    ang = ((u @ sim @ v.transpose(0, 1)).clamp(-1.0, 1.0) + 1.0) * 0.5
-    # Golden sharpen: 3×3 codon angles are too similar; φ stretches the tail.
+    dim = int(codes_t.size(-1))
+    n_blk = max(1, dim // 64)
+    ang = mag.new_zeros(mag.shape)
+    sim = None
+    for b in range(n_blk):
+        u = torch.nn.functional.normalize(codes_t[:, b * 64 : (b + 1) * 64], dim=-1, eps=1e-6)
+        v = torch.nn.functional.normalize(codes_tp[:, b * 64 : (b + 1) * 64], dim=-1, eps=1e-6)
+        if sim is None:
+            sim = _trit_sim(u.device, u.dtype)
+        ang = ang + ((u @ sim @ v.transpose(0, 1)).clamp(-1.0, 1.0) + 1.0) * 0.5
+    ang = ang / float(n_blk)
     return (mag * ang).clamp(min=0.0) ** SEEDS.phi
 
 
@@ -63,6 +117,128 @@ def expected_step_um(match_um: float = MATCH_UM) -> float:
     return sigma_um(match_um) * SEEDS.phi
 
 
+def min_track_len() -> int:
+    """φ² ≈ 2.6 → 3. Drop isolates/pairs. φ⁴=7 is for after tracks are already long."""
+    return max(2, int(round(SEEDS.phi ** 2)))
+
+
+def _greedy_pairs(score: torch.Tensor) -> list[tuple[int, int]]:
+    n, m = score.shape
+    flat = score.reshape(-1)
+    order = torch.argsort(flat, descending=True)
+    used_t = torch.zeros(n, dtype=torch.bool, device=score.device)
+    used_p = torch.zeros(m, dtype=torch.bool, device=score.device)
+    pairs: list[tuple[int, int]] = []
+    for idx in order.tolist():
+        if float(flat[idx]) < 0.0:
+            break
+        i, j = divmod(int(idx), m)
+        if used_t[i] or used_p[j]:
+            continue
+        used_t[i] = True
+        used_p[j] = True
+        pairs.append((i, j))
+        if len(pairs) == min(n, m):
+            break
+    return pairs
+
+
+def snap_xyz(
+    vol: torch.Tensor,
+    xyz: torch.Tensor,
+    *,
+    xy_r: int = 1,
+    z_r: int = 1,
+) -> torch.Tensor:
+    """Move each peak to the local intensity max in a σ-scale window.
+
+    GT-only NN is already 1.0; jittered DoG centroids are why extras steal.
+    """
+    if xyz.numel() == 0:
+        return xyz
+    if vol.dim() == 4:
+        vol = vol[0]
+    z_n, h, w = int(vol.size(0)), int(vol.size(1)), int(vol.size(2))
+    out = xyz.clone()
+    for i in range(xyz.size(0)):
+        xi = int(xyz[i, 0].item())
+        yi = int(xyz[i, 1].item())
+        zi = int(xyz[i, 2].item())
+        z0, z1 = max(0, zi - z_r), min(z_n, zi + z_r + 1)
+        y0, y1 = max(0, yi - xy_r), min(h, yi + xy_r + 1)
+        x0, x1 = max(0, xi - xy_r), min(w, xi + xy_r + 1)
+        patch = vol[z0:z1, y0:y1, x0:x1]
+        if patch.numel() == 0:
+            continue
+        flat = int(patch.reshape(-1).argmax().item())
+        dz, rem = divmod(flat, patch.size(1) * patch.size(2))
+        dy, dx = divmod(rem, patch.size(2))
+        out[i, 0] = float(x0 + dx)
+        out[i, 1] = float(y0 + dy)
+        out[i, 2] = float(z0 + dz)
+    return out
+
+
+def filter_short_tracks(
+    n_nodes: int,
+    edges: torch.Tensor,
+    *,
+    min_len: int | None = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Drop weakly-connected components shorter than φ⁴. Returns keep-mask, filtered edges."""
+    if min_len is None:
+        min_len = min_track_len()
+    keep = torch.zeros(n_nodes, dtype=torch.bool)
+    if n_nodes == 0:
+        return keep, edges
+    parent = list(range(n_nodes))
+
+    def find(a: int) -> int:
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    def union(a: int, b: int) -> None:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[rb] = ra
+
+    if edges.numel():
+        for s, t in edges.tolist():
+            union(int(s), int(t))
+    size = [0] * n_nodes
+    for i in range(n_nodes):
+        size[find(i)] += 1
+    for i in range(n_nodes):
+        if size[find(i)] >= min_len:
+            keep[i] = True
+    if edges.numel() == 0:
+        return keep, edges
+    src, dst = edges[:, 0], edges[:, 1]
+    ekeep = keep[src] & keep[dst]
+    return keep, edges[ekeep]
+
+
+def select_nodes(
+    xyz: torch.Tensor,
+    t: torch.Tensor,
+    edges: torch.Tensor,
+    keep: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Rebuild a graph on the kept nodes (short-track output)."""
+    idx = torch.where(keep)[0]
+    remap = torch.full((keep.size(0),), -1, dtype=torch.long, device=xyz.device)
+    remap[idx] = torch.arange(idx.size(0), device=xyz.device)
+    if edges.numel():
+        mapped = remap[edges]
+        ok = (mapped[:, 0] >= 0) & (mapped[:, 1] >= 0)
+        edges = mapped[ok]
+    else:
+        edges = edges
+    return xyz[keep], t[keep], edges
+
+
 def kappa_link(
     dist_um: torch.Tensor,
     *,
@@ -70,6 +246,7 @@ def kappa_link(
     s_j: torch.Tensor | None = None,
     codon_t: torch.Tensor | None = None,
     codon_tp: torch.Tensor | None = None,
+    patch: torch.Tensor | None = None,
     peak_at_um: torch.Tensor | float,
     match_um: float = MATCH_UM,
 ) -> torch.Tensor:
@@ -87,6 +264,8 @@ def kappa_link(
         ident = ident * (1.0 / (1.0 + (s_i - s_j).abs() / COLLAPSE_THRESHOLD))
     if codon_t is not None and codon_tp is not None:
         ident = ident * codon_ident(codon_t, codon_tp)
+    if patch is not None:
+        ident = ident * patch
     spat = 1.0 / (1.0 + (dist_um - peak_at_um).abs() / sig)
     delta_d = COMPACTIFICATION_CEILING * dist_um / max_link_um_fsot(match_um)
     return SEEDS.a_bleed * SEEDS.poof * ident * spat / (1.0 + delta_d / COMPACTIFICATION_CEILING)
@@ -137,6 +316,7 @@ def link_fsot(
     s_tp: torch.Tensor | None = None,
     codon_t: torch.Tensor | None = None,
     codon_tp: torch.Tensor | None = None,
+    patch: torch.Tensor | None = None,
     vel_t: torch.Tensor | None = None,
     match_um: float = MATCH_UM,
 ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -168,27 +348,23 @@ def link_fsot(
     s_j = s_tp[None, :] if s_tp is not None else None
     kappa = kappa_link(
         d_use, s_i=s_i, s_j=s_j, codon_t=codon_t, codon_tp=codon_tp,
-        peak_at_um=peak_at, match_um=match_um,
+        patch=patch, peak_at_um=peak_at, match_um=match_um,
     )
     kappa = kappa.masked_fill(d_cur > max_um, -1.0)
-
-    flat = kappa.reshape(-1)
-    order = torch.argsort(flat, descending=True)
-    used_t = torch.zeros(n, dtype=torch.bool, device=d_cur.device)
-    used_p = torch.zeros(m, dtype=torch.bool, device=d_cur.device)
     pairs: list[tuple[int, int]] = []
-    for idx in order.tolist():
-        if float(flat[idx]) < 0.0:
-            break
-        i, j = divmod(int(idx), m)
-        if used_t[i] or used_p[j]:
-            continue
-        used_t[i] = True
-        used_p[j] = True
-        pairs.append((i, j))
-        vel_tp[j] = xyz_tp[j] - xyz_t[i]
-        if len(pairs) == min(n, m):
-            break
+    if patch is not None:
+        lock = patch.clone()
+        lock = lock.masked_fill(d_cur > match_um, -1.0)
+        pairs = _greedy_pairs(lock)
+        used_t = torch.zeros(n, dtype=torch.bool, device=d_cur.device)
+        used_p = torch.zeros(m, dtype=torch.bool, device=d_cur.device)
+        for i, j in pairs:
+            used_t[i] = True
+            used_p[j] = True
+        rest = kappa.masked_fill(used_t[:, None], -1.0).masked_fill(used_p[None, :], -1.0)
+        pairs.extend(_greedy_pairs(rest))
+    else:
+        pairs = _greedy_pairs(kappa)
     if not pairs:
         return zero_pairs, vel_tp
     pair_t = torch.tensor(pairs, dtype=torch.long, device=xyz_t.device)
