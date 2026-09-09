@@ -57,6 +57,56 @@ def test_nms_sigma_keeps_peaks_inside_match_ball():
     assert merged.size(0) == 1
 
 
+def test_codon_codes_differ_on_two_blobs():
+    from wavegazer.wavegazer_net import WavegazerNet
+
+    net = WavegazerNet(1, 2, sparse=True)
+    img = torch.zeros(4, 32, 32)
+    img[1, 8, 8] = 1.0
+    img[1, 24, 24] = 0.3
+    xyz = torch.tensor([[8.0, 8.0, 1.0], [24.0, 24.0, 1.0]])
+    codes = net.codon_codes(img, xyz)
+    assert codes.size() == (2, 64)
+    assert not torch.allclose(codes[0], codes[1])
+
+
+def test_codon_ident_prefers_same_vector():
+    from wavegazer.track import codon_ident
+
+    torch.manual_seed(0)
+    a = torch.randn(2, 64)
+    same = codon_ident(a, a)
+    scaled = codon_ident(a, a * 3.0)
+    opp = codon_ident(a, -a)
+    assert float(same[0, 0]) > float(scaled[0, 0])
+    assert float(same[0, 0]) > float(opp[0, 0])
+
+
+def test_link_fsot_codon_beats_near_clutter():
+    """Near speck with the opposite codon code loses to a farther same-code cell."""
+    from wavegazer.blob import MATCH_UM
+    from wavegazer.fsot_seeds import SEEDS
+    from wavegazer.track import link_fsot, link_nn
+
+    yx, z = 0.40625, 1.625
+    src = torch.tensor([[0.0, 0.0, 0.0]])
+    true_xy = 5.0 / yx
+    clut_xy = 3.0 / yx
+    dst = torch.tensor([[true_xy, 0.0, 0.0], [clut_xy, 0.0, 0.0]])
+    code = torch.zeros(1, 64)
+    code[0, 0] = 1.0
+    code_tp = torch.zeros(2, 64)
+    code_tp[0, 0] = 1.0
+    code_tp[1, 0] = -1.0  # TTT-like vs AAA: PRIMARY agreement −1
+    nn = link_nn(src, dst, max_um=MATCH_UM * SEEDS.pi, yx_um=yx, z_um=z)
+    fs, _ = link_fsot(
+        src, dst, max_um=MATCH_UM * SEEDS.pi, yx_um=yx, z_um=z,
+        codon_t=code, codon_tp=code_tp,
+    )
+    assert int(nn[0, 1]) == 1
+    assert int(fs[0, 1]) == 0
+
+
 def test_link_fsot_identity_beats_near_clutter():
     """Nearest Euclidean picks a 3 µm speck; bleed κ keeps the same-S cell at 5 µm."""
     from wavegazer.blob import MATCH_UM

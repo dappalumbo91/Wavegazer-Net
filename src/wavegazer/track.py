@@ -12,8 +12,40 @@ from dataclasses import dataclass
 import torch
 
 from .blob import MATCH_UM, sigma_um
+from .codon_kernels import trit_similarity_matrix
 from .fsot_seeds import COLLAPSE_THRESHOLD, COMPACTIFICATION_CEILING, SEEDS
 from .peaks import dist_um
+
+_TRIT_SIM: torch.Tensor | None = None
+
+
+def _trit_sim(device, dtype) -> torch.Tensor:
+    global _TRIT_SIM
+    if _TRIT_SIM is None or _TRIT_SIM.device != device or _TRIT_SIM.dtype != dtype:
+        _TRIT_SIM = trit_similarity_matrix().to(device=device, dtype=dtype)
+    return _TRIT_SIM
+
+
+def codon_ident(codes_t: torch.Tensor, codes_tp: torch.Tensor) -> torch.Tensor:
+    """Genetics compare in codon space.
+
+    L2-normalizing wiped identity: 3×3 codon responses at blob centers are
+    nearly parallel (same kernel pattern, different brightness). Relative L1
+    keeps magnitude, then trit-bilinear scores the *direction* of the
+    residual ``u/|u|``. Product is the pair identity, mapped through collapse Θ.
+    """
+    if codes_t.numel() == 0 or codes_tp.numel() == 0:
+        return codes_t.new_zeros(codes_t.size(0), codes_tp.size(0))
+    l1 = (codes_t[:, None, :] - codes_tp[None, :, :]).abs().sum(dim=-1)
+    nrm = codes_t.abs().sum(dim=-1)[:, None] + codes_tp.abs().sum(dim=-1)[None, :]
+    rel = l1 / nrm.clamp_min(1e-6)
+    mag = 1.0 / (1.0 + rel / COLLAPSE_THRESHOLD)
+    u = torch.nn.functional.normalize(codes_t, dim=-1, eps=1e-6)
+    v = torch.nn.functional.normalize(codes_tp, dim=-1, eps=1e-6)
+    sim = _trit_sim(u.device, u.dtype)
+    ang = ((u @ sim @ v.transpose(0, 1)).clamp(-1.0, 1.0) + 1.0) * 0.5
+    # Golden sharpen: 3×3 codon angles are too similar; φ stretches the tail.
+    return (mag * ang).clamp(min=0.0) ** SEEDS.phi
 
 
 def max_link_um(match_um: float = MATCH_UM) -> float:
@@ -36,20 +68,25 @@ def kappa_link(
     *,
     s_i: torch.Tensor | None = None,
     s_j: torch.Tensor | None = None,
+    codon_t: torch.Tensor | None = None,
+    codon_tp: torch.Tensor | None = None,
     peak_at_um: torch.Tensor | float,
     match_um: float = MATCH_UM,
 ) -> torch.Tensor:
     """Quantum bleed κ on a pair, with Fluid spatial prior.
 
-    ident = 1 / (1 + |Si−Sj|/Θ)  — collapse: same key if S agrees
-    spat  = 1 / (1 + |d − peak|/σ) — first step peaks at φσ; inertia peaks at 0
-    ΔD    = 25 · d / (π·match)     — compactification gap from microns
-    κ     = A_bleed · POOF · ident · spat / (1 + ΔD/25)
+    ident_S = 1 / (1 + |Si−Sj|/Θ)     collapse: same key if S agrees
+    ident_C = codon trit agreement      Genetics local what
+    spat    = 1 / (1 + |d − peak|/σ)
+    ΔD      = 25 · d / (φ·match)
+    κ       = A_bleed · POOF · ident_S · ident_C · spat / (1 + ΔD/25)
     """
     sig = sigma_um(match_um)
     ident = dist_um.new_ones(dist_um.shape)
     if s_i is not None and s_j is not None:
-        ident = 1.0 / (1.0 + (s_i - s_j).abs() / COLLAPSE_THRESHOLD)
+        ident = ident * (1.0 / (1.0 + (s_i - s_j).abs() / COLLAPSE_THRESHOLD))
+    if codon_t is not None and codon_tp is not None:
+        ident = ident * codon_ident(codon_t, codon_tp)
     spat = 1.0 / (1.0 + (dist_um - peak_at_um).abs() / sig)
     delta_d = COMPACTIFICATION_CEILING * dist_um / max_link_um_fsot(match_um)
     return SEEDS.a_bleed * SEEDS.poof * ident * spat / (1.0 + delta_d / COMPACTIFICATION_CEILING)
@@ -98,6 +135,8 @@ def link_fsot(
     z_um: float,
     s_t: torch.Tensor | None = None,
     s_tp: torch.Tensor | None = None,
+    codon_t: torch.Tensor | None = None,
+    codon_tp: torch.Tensor | None = None,
     vel_t: torch.Tensor | None = None,
     match_um: float = MATCH_UM,
 ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -128,7 +167,8 @@ def link_fsot(
     s_i = s_t[:, None] if s_t is not None else None
     s_j = s_tp[None, :] if s_tp is not None else None
     kappa = kappa_link(
-        d_use, s_i=s_i, s_j=s_j, peak_at_um=peak_at, match_um=match_um,
+        d_use, s_i=s_i, s_j=s_j, codon_t=codon_t, codon_tp=codon_tp,
+        peak_at_um=peak_at, match_um=match_um,
     )
     kappa = kappa.masked_fill(d_cur > max_um, -1.0)
 
@@ -151,7 +191,39 @@ def link_fsot(
             break
     if not pairs:
         return zero_pairs, vel_tp
-    return torch.tensor(pairs, dtype=torch.long, device=xyz_t.device), vel_tp
+    pair_t = torch.tensor(pairs, dtype=torch.long, device=xyz_t.device)
+    pair_t = consensus_swaps(kappa, pair_t)
+    vel_tp = xyz_tp.new_zeros(m, 3)
+    vel_tp[pair_t[:, 1]] = xyz_tp[pair_t[:, 1]] - xyz_t[pair_t[:, 0]]
+    return pair_t, vel_tp
+
+
+def consensus_swaps(kappa: torch.Tensor, pairs: torch.Tensor, *, rounds: int = 8) -> torch.Tensor:
+    """Raise total κ by swapping two edges. Discrete consensus, no softmax."""
+    e = int(pairs.size(0))
+    if e < 2:
+        return pairs
+    src = pairs[:, 0].tolist()
+    dst = pairs[:, 1].tolist()
+    klist = kappa.detach().cpu().tolist()
+    for _ in range(rounds):
+        moved = False
+        for a in range(e):
+            ia, ja = src[a], dst[a]
+            row_a = klist[ia]
+            for b in range(a + 1, e):
+                ib, jb = src[b], dst[b]
+                cur = row_a[ja] + klist[ib][jb]
+                alt_ajb, alt_ibja = row_a[jb], klist[ib][ja]
+                if alt_ajb + alt_ibja > cur + 1e-9 and alt_ajb >= 0.0 and alt_ibja >= 0.0:
+                    dst[a], dst[b] = jb, ja
+                    moved = True
+                    break
+            if moved:
+                break
+        if not moved:
+            break
+    return torch.tensor(list(zip(src, dst)), dtype=torch.long, device=pairs.device)
 
 
 def link_times(

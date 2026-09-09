@@ -20,7 +20,7 @@ import torch.nn.functional as F
 
 from .blob import DEFAULT_YX_UM, MATCH_UM, multi_scale_blob_map, sigma_px, sigma_um
 from .fsot_routes import VISUAL_FOREGROUND_SIGN, VISUAL_LADDER
-from .fsot_seeds import SEEDS
+from .fsot_seeds import CODON_CHANNELS, SEEDS
 from .operators import CodonMixer, collapse_logits, field_from_features
 from .peaks import PeakSet, detect_gate, local_maxima, nms, nms_xyz_um
 
@@ -146,6 +146,33 @@ class WavegazerNet(nn.Module):
         score = torch.cat(sc)
         radius = sigma_um(match_um) if nms_um is None else nms_um
         return nms_xyz_um(xyz, score, radius, yx_um=yx_um, z_um=z_um)
+
+    def codon_codes(self, vol: torch.Tensor, xyz: torch.Tensor) -> torch.Tensor:
+        """(P, 64) raw codon 3×3 responses at peaks. Genetics local “what”.
+
+        Spatial stem only — trit mix is the *compare* (see ``codon_ident``),
+        not a second mix on the vector.
+        """
+        if vol.dim() == 4:
+            vol = vol[0]
+        spatial = self.stem.spatial
+        if xyz.numel() == 0:
+            return spatial.new_zeros(0, CODON_CHANNELS)
+        vol = vol.to(dtype=spatial.dtype)
+        z_n, h, w = int(vol.size(0)), int(vol.size(1)), int(vol.size(2))
+        zi = xyz[:, 2].long().clamp(0, z_n - 1)
+        codes = spatial.new_zeros(xyz.size(0), CODON_CHANNELS)
+        for z in zi.unique().tolist():
+            sel = zi == z
+            img = vol[int(z)][None, None]
+            feat = F.conv2d(img, spatial, padding=1)
+            # Cell-scale pool: window 2φ+1 (odd). 3×3 codon is local; this is the blob.
+            k = int(2 * SEEDS.phi + 1) | 1
+            feat = F.avg_pool2d(feat, kernel_size=k, stride=1, padding=k // 2)[0]
+            xs = xyz[sel, 0].long().clamp(0, w - 1)
+            ys = xyz[sel, 1].long().clamp(0, h - 1)
+            codes[sel] = feat[:, ys, xs].transpose(0, 1).contiguous()
+        return codes
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if x.size(1) != self.in_channels:

@@ -75,12 +75,17 @@ def main() -> None:
         cache = ROOT / "artifacts" / "peak_cache" / f"{zp.stem}.pt"
         xyz_by_t: dict[int, torch.Tensor] = {}
         score_by_t: dict[int, torch.Tensor] = {}
+        codon_by_t: dict[int, torch.Tensor] = {}
+        packed = None
         if cache.is_file():
             packed = torch.load(cache, map_location="cpu", weights_only=False)
             xyz_by_t = {int(k): v for k, v in packed["xyz"].items()}
             score_by_t = {int(k): v for k, v in packed["score"].items()}
+            if packed.get("codon"):
+                codon_by_t = {int(k): v for k, v in packed["codon"].items()}
             print(f"  {zp.stem} loaded cache {cache.name} T={len(xyz_by_t)}", flush=True)
         else:
+            packed = {}
             with torch.no_grad():
                 for t in range(t_n):
                     vol = _norm_vol(np.asarray(arr[t]))
@@ -91,8 +96,19 @@ def main() -> None:
                     score_by_t[t] = sc
                     if t % 20 == 0:
                         print(f"  {zp.stem} t={t}/{t_n} peaks={pred.size(0)}", flush=True)
+        if len(codon_by_t) != len(xyz_by_t):
+            print(f"  {zp.stem} codon codes…", flush=True)
+            with torch.no_grad():
+                for t in range(t_n):
+                    vol = torch.from_numpy(_norm_vol(np.asarray(arr[t])))
+                    codon_by_t[t] = net.codon_codes(vol, xyz_by_t[t])
+                    if t % 20 == 0:
+                        print(f"  {zp.stem} codon t={t}/{t_n}", flush=True)
+            packed["xyz"] = xyz_by_t
+            packed["score"] = score_by_t
+            packed["codon"] = codon_by_t
             cache.parent.mkdir(parents=True, exist_ok=True)
-            torch.save({"xyz": xyz_by_t, "score": score_by_t}, cache)
+            torch.save(packed, cache)
 
         pred_xyz, pred_t, offset = [], [], {}
         n = 0
@@ -118,6 +134,7 @@ def main() -> None:
                     pairs, vel = link_fsot(
                         a, b, max_um=fs_um, yx_um=YX_UM, z_um=Z_UM,
                         s_t=score_by_t[t], s_tp=score_by_t[t + 1],
+                        codon_t=codon_by_t[t], codon_tp=codon_by_t[t + 1],
                         vel_t=None, match_um=MATCH_UM,
                     )
                 else:
@@ -188,8 +205,8 @@ def main() -> None:
         "volumes": names,
         "wavegazer": {"per": rows, "mean": _mean(rows)},
         "note": (
-            "FSOT linker: Quantum κ (ident via collapse Θ, spatial prior φσ, "
-            "Fluid inertia once a track exists). Control: greedy NN. "
+            "FSOT linker: Quantum κ × Genetics codon ident^φ × spat, "
+            "search φ·7 µm, consensus swaps. Control: greedy NN. "
             "7 µm cell NMS. No transformer+ILP. No division term."
         ),
         "competition_context": {

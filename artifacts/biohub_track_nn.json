@@ -13,7 +13,7 @@
         "n_gt_nodes": 52,
         "n_pred_nodes": 27534,
         "n_gt_edges": 50,
-        "n_pred_edges": 25424,
+        "n_pred_edges": 25420,
         "node_tp": 52,
         "node_recall": 1.0,
         "edge_tp": 39,
@@ -33,7 +33,7 @@
         "n_gt_nodes": 51,
         "n_pred_nodes": 45136,
         "n_gt_edges": 49,
-        "n_pred_edges": 38927,
+        "n_pred_edges": 38938,
         "node_tp": 46,
         "node_recall": 0.9019607843137255,
         "edge_tp": 32,
@@ -54,7 +54,7 @@
       "n_gt_nodes": 51.5,
       "n_pred_nodes": 36335.0,
       "n_gt_edges": 49.5,
-      "n_pred_edges": 32175.5,
+      "n_pred_edges": 32179.0,
       "node_tp": 49.0,
       "node_recall": 0.9509803921568627,
       "edge_tp": 35.5,
@@ -71,7 +71,7 @@
       "t_frames": 100.0
     }
   },
-  "note": "FSOT linker: Quantum \u03ba (ident via collapse \u0398, spatial prior \u03c6\u03c3, Fluid inertia once a track exists). Control: greedy NN. 7 \u00b5m cell NMS. No transformer+ILP. No division term.",
+  "note": "FSOT linker: Quantum \u03ba \u00d7 Genetics codon ident^\u03c6 \u00d7 spat, search \u03c6\u00b77 \u00b5m, consensus swaps. Control: greedy NN. 7 \u00b5m cell NMS. No transformer+ILP. No division term.",
   "competition_context": {
     "public_floor_full_score": 0.848,
     "public_top_full_score": 0.985,

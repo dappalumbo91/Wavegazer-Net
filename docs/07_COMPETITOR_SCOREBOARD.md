@@ -36,14 +36,17 @@ a 0.848-class number.
    (1.0, ~968/frame, density would cap adj at ~0.72). Full-video 7 µm NMS
    sat at 27534 vs `T_true` 25755 on `44b6_0113de3b` — density is fine.
    Seed rankers and Z-focus cannot prune σ-NMS extras without losing GT.
-2. **Linking (still the gap to 0.848).** Bleed κ
-   (`A_bleed·POOF·ident/(1+ΔD/25)`, ident = collapse `1/(1+|ΔS|/Θ)`,
-   search `φ·7` µm) beats greedy NN: **0.615 vs 0.555** and **0.481 vs
-   0.453** adj on two videos. GT-only NN is already **1.0** — extras steal
-   the 11–17 FN. Identity cannot outrank a 2 µm speck vs a 7 µm true
-   partner. Golden-step + inertia followed wrong tracks (J dropped to
-   0.37). Next: codon-patch identity or an ILP on these κ costs, not a
-   tighter DoG. Divisions not scored (0.1×).
+2. **Linking (still the gap to 0.848).** Bleed κ + Genetics codon ident
+   beats greedy NN: **0.615 vs 0.555** and **0.481 vs 0.453**. Codon 3×3
+   (frozen, trit-bilinear × relative L1, sharpened `^φ`) prefers the true
+   partner on **7/12** FN pairs — the right object, the transformer’s
+   “what.” It does not change the assignment: ident ratio (~1.25) is
+   below the distance ratio (~1.55) of a 3 µm speck vs a 5 µm cell.
+   Dropping the spatial term to let codon lead **hurt** video 2
+   (0.500→0.470). That is the free-param gap: CellMot’s edge head is a
+   fitted appearance metric; 64 codon filters are not yet that metric.
+   Next: richer on-spine appearance (multi-scale codon / Fluid Z-stack)
+   or ILP on these costs. Not a tighter DoG. Divisions not scored.
 3. **Then** public LB vs 0.848 / 0.985.
 
 Do not quote 1.0 detect recall as “near 0.848”. Different units.
