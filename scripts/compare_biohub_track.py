@@ -26,6 +26,7 @@ from wavegazer.track import (
     max_link_um_fsot,
     patch_ncc,
     score_edges,
+    snap_xyz,
 )
 from wavegazer.wavegazer_net import WavegazerNet
 
@@ -118,6 +119,13 @@ def main() -> None:
             cache.parent.mkdir(parents=True, exist_ok=True)
             torch.save(packed, cache)
 
+        xy_r = max(1, int(round(MATCH_UM / (YX_UM * SEEDS.phi))))
+        z_r = max(1, int(round(MATCH_UM / (Z_UM * SEEDS.phi))))
+        print(f"  {zp.stem} COM snap xy_r={xy_r} z_r={z_r}", flush=True)
+        with torch.no_grad():
+            for t in range(t_n):
+                vol = torch.from_numpy(_norm_vol(np.asarray(arr[t])))
+                xyz_by_t[t] = snap_xyz(vol, xyz_by_t[t], xy_r=xy_r, z_r=z_r)
         pred_xyz, pred_t, offset = [], [], {}
         n = 0
         for t in range(t_n):
@@ -133,7 +141,7 @@ def main() -> None:
         pred_xyz_t = torch.cat(pred_xyz, dim=0)
         pred_t_t = torch.cat(pred_t, dim=0)
 
-        patch_r = max(3, int(sigma_px(YX_UM, MATCH_UM) * 2) | 1)
+        patch_r = max(3, int(MATCH_UM / YX_UM) | 1)
 
         def _edges(use_fsot: bool) -> torch.Tensor:
             pred_edges = []

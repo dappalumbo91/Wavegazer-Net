@@ -26,7 +26,7 @@ spine (`docs/ENGINEERING_HARDWARE_CODE_DIRECTION.md` in the Lean hub).
 | Softmax + wCE / Dice+CE | Turn logits into classes / train | Collapse head on **tile-centered** S: local \(S-\bar S>0\) emergence (fg). Global domain sign of S is not a per-pixel class. Dice is the **scoreboard**, not the physics. | Lean sign syntax + “right comparison object”; GPU consensus (no exp) |
 | Elastic augment | Teach deformation invariance | Already T3 fluid (Poof/Suction/Chaos/bleed). Image deformation is the medium. | MATH_KEY §3.3 |
 | Overlap-tile infer | Big images | Same tiling contract as the U-Net baseline. | Unchanged interface |
-| Next-frame edges (CellMot transformer+ILP) | Same cell at t and t+1 | Luma-patch NCC lock inside 7 µm (measured `m`), then bleed κ × codon ident, search `φ·7`. Zero weights. | Quantum `κ_ij`; Genetics codon; image as `m` |
+| Next-frame edges (CellMot transformer+ILP) | Same cell at t and t+1 | NN default; 3D luma-NCC override if nearest unlike (NCC < Θ); COM snap; bleed κ. Zero weights. | Quantum `κ_ij`; collapse Θ; image as `m` |
 
 ## Visual \(D_{\mathrm{eff}}\) ladder (preregistered)
 

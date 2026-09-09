@@ -96,6 +96,31 @@ def test_patch_ncc_prefers_same_blob():
     assert float(ncc[0, 0]) > float(ncc[0, 1])
 
 
+def test_link_fsot_overrides_weak_nn():
+    """Keep NN when the nearest patch matches; override when it looks unlike."""
+    from wavegazer.blob import MATCH_UM
+    from wavegazer.fsot_seeds import SEEDS
+    from wavegazer.track import link_fsot, link_nn
+
+    yx, z = 0.40625, 1.625
+    src = torch.tensor([[0.0, 0.0, 0.0]])
+    true_xy = 5.0 / yx
+    clut_xy = 2.0 / yx
+    dst = torch.tensor([[true_xy, 0.0, 0.0], [clut_xy, 0.0, 0.0]])
+    nn = link_nn(src, dst, max_um=MATCH_UM * SEEDS.pi, yx_um=yx, z_um=z)
+    assert int(nn[0, 1]) == 1
+    unlike = torch.tensor([[0.95, 0.2]])
+    fs, _ = link_fsot(
+        src, dst, max_um=MATCH_UM * SEEDS.pi, yx_um=yx, z_um=z, patch=unlike,
+    )
+    assert int(fs[0, 1]) == 0
+    alike = torch.tensor([[0.5, 0.95]])
+    fs2, _ = link_fsot(
+        src, dst, max_um=MATCH_UM * SEEDS.pi, yx_um=yx, z_um=z, patch=alike,
+    )
+    assert int(fs2[0, 1]) == 1
+
+
 def test_link_fsot_codon_beats_near_clutter():
     """Near speck with the opposite codon code loses to a farther same-code cell."""
     from wavegazer.blob import MATCH_UM
@@ -145,8 +170,8 @@ def test_snap_xyz_moves_to_bright_pixel():
     vol[1, 4, 5] = 1.0
     xyz = torch.tensor([[4.0, 4.0, 1.0]])
     out = snap_xyz(vol, xyz, xy_r=1, z_r=1)
-    assert int(out[0, 0]) == 5
-    assert int(out[0, 1]) == 4
+    assert abs(float(out[0, 0]) - 5.0) < 0.2
+    assert abs(float(out[0, 1]) - 4.0) < 0.2
 
 
 def test_link_fsot_identity_beats_near_clutter():

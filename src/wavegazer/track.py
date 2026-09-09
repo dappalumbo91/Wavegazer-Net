@@ -65,13 +65,23 @@ def patch_ncc(
             out[sel] = torch.stack(rows, dim=0)
         return out
 
-    a = _pats(vol_t, xyz_t)
-    b = _pats(vol_tp, xyz_tp)
-    a = a - a.mean(dim=-1, keepdim=True)
-    b = b - b.mean(dim=-1, keepdim=True)
-    a = a / a.norm(dim=-1, keepdim=True).clamp_min(1e-6)
-    b = b / b.norm(dim=-1, keepdim=True).clamp_min(1e-6)
-    return ((a @ b.transpose(0, 1)).clamp(-1.0, 1.0) + 1.0) * 0.5
+    def _ncc(xyz_a: torch.Tensor, xyz_b: torch.Tensor) -> torch.Tensor:
+        a = _pats(vol_t, xyz_a)
+        b = _pats(vol_tp, xyz_b)
+        a = a - a.mean(dim=-1, keepdim=True)
+        b = b - b.mean(dim=-1, keepdim=True)
+        a = a / a.norm(dim=-1, keepdim=True).clamp_min(1e-6)
+        b = b / b.norm(dim=-1, keepdim=True).clamp_min(1e-6)
+        return ((a @ b.transpose(0, 1)).clamp(-1.0, 1.0) + 1.0) * 0.5
+
+    acc = _ncc(xyz_t, xyz_tp)
+    for dz in (-1.0, 1.0):
+        sa = xyz_t.clone()
+        sb = xyz_tp.clone()
+        sa[:, 2] = (sa[:, 2] + dz).clamp(0, vol_t.size(0) - 1)
+        sb[:, 2] = (sb[:, 2] + dz).clamp(0, vol_tp.size(0) - 1)
+        acc = acc + _ncc(sa, sb)
+    return acc / 3.0
 
 
 def codon_ident(codes_t: torch.Tensor, codes_tp: torch.Tensor) -> torch.Tensor:
@@ -150,10 +160,7 @@ def snap_xyz(
     xy_r: int = 1,
     z_r: int = 1,
 ) -> torch.Tensor:
-    """Move each peak to the local intensity max in a σ-scale window.
-
-    GT-only NN is already 1.0; jittered DoG centroids are why extras steal.
-    """
+    """Intensity center-of-mass in a window. Argmax jumped to specks; COM does not."""
     if xyz.numel() == 0:
         return xyz
     if vol.dim() == 4:
@@ -161,21 +168,25 @@ def snap_xyz(
     z_n, h, w = int(vol.size(0)), int(vol.size(1)), int(vol.size(2))
     out = xyz.clone()
     for i in range(xyz.size(0)):
-        xi = int(xyz[i, 0].item())
-        yi = int(xyz[i, 1].item())
-        zi = int(xyz[i, 2].item())
+        xi = int(round(float(xyz[i, 0])))
+        yi = int(round(float(xyz[i, 1])))
+        zi = int(round(float(xyz[i, 2])))
         z0, z1 = max(0, zi - z_r), min(z_n, zi + z_r + 1)
         y0, y1 = max(0, yi - xy_r), min(h, yi + xy_r + 1)
         x0, x1 = max(0, xi - xy_r), min(w, xi + xy_r + 1)
-        patch = vol[z0:z1, y0:y1, x0:x1]
-        if patch.numel() == 0:
+        patch = vol[z0:z1, y0:y1, x0:x1].clamp_min(0)
+        mass = float(patch.sum())
+        if mass <= 1e-8:
             continue
-        flat = int(patch.reshape(-1).argmax().item())
-        dz, rem = divmod(flat, patch.size(1) * patch.size(2))
-        dy, dx = divmod(rem, patch.size(2))
-        out[i, 0] = float(x0 + dx)
-        out[i, 1] = float(y0 + dy)
-        out[i, 2] = float(z0 + dz)
+        zz = torch.arange(z0, z1, device=vol.device, dtype=patch.dtype)
+        yy = torch.arange(y0, y1, device=vol.device, dtype=patch.dtype)
+        xx = torch.arange(x0, x1, device=vol.device, dtype=patch.dtype)
+        wz = (patch * zz[:, None, None]).sum() / mass
+        wy = (patch * yy[None, :, None]).sum() / mass
+        wx = (patch * xx[None, None, :]).sum() / mass
+        out[i, 0] = float(wx)
+        out[i, 1] = float(wy)
+        out[i, 2] = float(wz)
     return out
 
 
@@ -353,22 +364,49 @@ def link_fsot(
     kappa = kappa.masked_fill(d_cur > max_um, -1.0)
     pairs: list[tuple[int, int]] = []
     if patch is not None:
-        lock = patch.clone()
-        lock = lock.masked_fill(d_cur > match_um, -1.0)
-        pairs = _greedy_pairs(lock)
+        # NN first. Patch may override only when the nearest neighbor
+        # looks unlike (NCC < 1/φ) — speck steal on easy videos — so
+        # similar cells inside 7 µm keep NN (0c582fdc).
+        spat = (max_um - d_cur).clone()
+        spat = spat.masked_fill(d_cur > max_um, -1.0)
+        nn_pairs = _greedy_pairs(spat)
         used_t = torch.zeros(n, dtype=torch.bool, device=d_cur.device)
         used_p = torch.zeros(m, dtype=torch.bool, device=d_cur.device)
-        for i, j in pairs:
-            used_t[i] = True
-            used_p[j] = True
+        weak: list[int] = []
+        gate = COLLAPSE_THRESHOLD
+        for i, j in nn_pairs:
+            ncc = float(patch[i, j]) if d_cur[i, j] <= max_um else 0.0
+            if ncc >= gate:
+                used_t[i] = True
+                used_p[j] = True
+                pairs.append((i, j))
+            else:
+                weak.append(i)
+        if weak:
+            lock = patch.clone()
+            lock = lock.masked_fill(d_cur > match_um, -1.0)
+            lock = lock.masked_fill(used_p[None, :], -1.0)
+            weak_mask = torch.ones(n, dtype=torch.bool, device=d_cur.device)
+            weak_mask[torch.tensor(weak, device=d_cur.device)] = False
+            lock = lock.masked_fill(weak_mask[:, None], -1.0)
+            for i, j in _greedy_pairs(lock):
+                used_t[i] = True
+                used_p[j] = True
+                pairs.append((i, j))
         rest = kappa.masked_fill(used_t[:, None], -1.0).masked_fill(used_p[None, :], -1.0)
         pairs.extend(_greedy_pairs(rest))
     else:
         pairs = _greedy_pairs(kappa)
+        pair_t = torch.tensor(pairs, dtype=torch.long, device=xyz_t.device) if pairs else zero_pairs
+        if pair_t.numel():
+            pair_t = consensus_swaps(kappa, pair_t)
+        vel_tp = xyz_tp.new_zeros(m, 3)
+        if pair_t.numel():
+            vel_tp[pair_t[:, 1]] = xyz_tp[pair_t[:, 1]] - xyz_t[pair_t[:, 0]]
+        return pair_t, vel_tp
     if not pairs:
         return zero_pairs, vel_tp
     pair_t = torch.tensor(pairs, dtype=torch.long, device=xyz_t.device)
-    pair_t = consensus_swaps(kappa, pair_t)
     vel_tp = xyz_tp.new_zeros(m, 3)
     vel_tp[pair_t[:, 1]] = xyz_tp[pair_t[:, 1]] - xyz_t[pair_t[:, 0]]
     return pair_t, vel_tp

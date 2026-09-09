@@ -21,8 +21,8 @@ pixels → peaks → centroids (7 µm, 3D anisotropic)
 | Detect, 3D 7 µm | recall | **1.00** (16 vol, σ NMS) | same 7 µm rule, all Z |
 | Density vs `T_true` | nodes / frame | **~968** vs **~258** | U-Net thr0.99 sits near `T_true` |
 | Top-`T_true` prune | 3D recall | **0.66** (score rank) | trained peak head keeps GT in budget |
-| Linking | edge Jaccard | patch-NCC lock **0.772** best / **0.600** mean (4 videos) | transformer edges + ILP |
-| Official-shaped | adj_edge_jaccard | **0.767** best / **0.587** mean (4 videos) | floor **0.848**, top **~0.985** |
+| Linking | edge Jaccard | hybrid **0.700** best / **0.624** mean (4 videos) | transformer edges + ILP |
+| Official-shaped | adj_edge_jaccard | **0.695** best / **0.609** mean (4 videos) | floor **0.848**, top **~0.985** |
 | Local hard5 (CellMot U-Net) | same official metric | — | baseline 0.71, FT+short-track **0.74** |
 
 **Where we sit:** detect box is green. 3D anisotropic 7 µm recall is **1.0** on
@@ -36,13 +36,12 @@ a 0.848-class number.
    (1.0, ~968/frame, density would cap adj at ~0.72). Full-video 7 µm NMS
    sat at 27534 vs `T_true` 25755 on `44b6_0113de3b` — density is fine.
    Seed rankers and Z-focus cannot prune σ-NMS extras without losing GT.
-2. **Linking (still the gap to 0.848).** Luma-patch NCC lock inside 7 µm
-   is the first identity that moves the official number: easy video
-   **0.767** (was 0.555 NN). 4-video mean **0.587** vs NN **0.529**.
-   Not 0.848. Patch lock **loses to NN** on `0c582fdc`. Remaining 6 FN /
-   7 FP on the easy video: J=44/57=0.772; killing those 7 FP with no TP
-   loss would be 0.88. We cannot tell the 7 FP from TP without a stronger
-   appearance metric. Divisions not scored.
+2. **Linking (still the gap to 0.848).** NN default, patch-NCC override
+   when nearest looks unlike (NCC < Θ), 3D 7 µm patches, intensity COM
+   snap. Beats NN on all 4 videos. Mean **0.609** vs NN **0.547**. Best
+   **0.695**. Floor **0.848** not beaten. Hard-video GT sits 8–10 µm from
+   the DoG peak (wrong Z-plane); COM cannot walk 5 planes. Z-ridge extras
+   recover those hits but 2× density, adj cap ~0.79. Divisions not scored.
 3. **Then** public LB vs 0.848 / 0.985.
 
 Do not quote 1.0 detect recall as “near 0.848”. Different units.
@@ -122,22 +121,18 @@ NMS** so density stays near `T_true`.
 
 ## Live linking (2026-09-09)
 
-Luma-patch NCC lock inside 7 µm, then bleed κ. 7 µm cell NMS.
+NN default + 3D patch-NCC override (NCC < Θ), COM snap, 7 µm NMS.
 Artifact `biohub_track_nn.json`. No division term.
 
 | Video | node rec | NN `J_adj` | FSOT `J_adj` | TP/FP/FN |
 |-------|----------|------------:|-------------:|----------|
-| `44b6_0113de3b` | 1.00 | 0.555 | **0.767** | 44/7/6 |
+| `44b6_0113de3b` | 1.00 | 0.555 | **0.695** | 42/10/8 |
 | `44b6_0b24845f` | 0.90 | 0.453 | **0.481** | 32/15/17 |
-| `44b6_0c582fdc` | 0.97 | **0.591** | 0.542 | 53/25/17 |
-| `44b6_0db75fae` | 1.00 | 0.519 | **0.557** | 116/52/35 |
-| mean | 0.97 | 0.529 | **0.587** | |
+| `44b6_0c582fdc` | 0.97 | 0.622 | **0.647** | 58/17/12 |
+| `44b6_0db75fae` | 1.00 | 0.557 | **0.614** | 121/41/30 |
+| mean | 0.97 | 0.547 | **0.609** | |
 
-Best video **0.767**. Floor **0.848** is **not beaten**. Patch NCC is the
-first identity that actually moves assignments (easy video 0.555→0.767).
-It **hurts** `0c582fdc` vs NN. Hard videos still miss nodes (0.90) or
-over-detect (1.3× `T_true`). Snap-to-bright and φ⁴ short-track both
-dropped labeled cells.
+Beats NN on every video. Floor **0.848** is **not beaten**.
 
 ## Current artifacts
 
