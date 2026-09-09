@@ -57,6 +57,28 @@ def test_nms_sigma_keeps_peaks_inside_match_ball():
     assert merged.size(0) == 1
 
 
+def test_link_fsot_identity_beats_near_clutter():
+    """Nearest Euclidean picks a 3 µm speck; bleed κ keeps the same-S cell at 5 µm."""
+    from wavegazer.blob import MATCH_UM
+    from wavegazer.fsot_seeds import SEEDS
+    from wavegazer.track import link_fsot, link_nn
+
+    yx, z = 0.40625, 1.625
+    src = torch.tensor([[0.0, 0.0, 0.0]])
+    true_xy = 5.0 / yx
+    clut_xy = 3.0 / yx
+    dst = torch.tensor([[true_xy, 0.0, 0.0], [clut_xy, 0.0, 0.0]])
+    s_t = torch.tensor([1.0])
+    s_tp = torch.tensor([1.0, 0.0])
+    nn = link_nn(src, dst, max_um=MATCH_UM * SEEDS.pi, yx_um=yx, z_um=z)
+    fs, _ = link_fsot(
+        src, dst, max_um=MATCH_UM * SEEDS.pi, yx_um=yx, z_um=z,
+        s_t=s_t, s_tp=s_tp,
+    )
+    assert int(nn[0, 1]) == 1
+    assert int(fs[0, 1]) == 0
+
+
 def test_link_nn_and_sparse_edge_jaccard():
     from wavegazer.track import link_nn, score_edges
 

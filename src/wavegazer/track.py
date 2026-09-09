@@ -11,14 +11,48 @@ from dataclasses import dataclass
 
 import torch
 
-from .blob import MATCH_UM
-from .fsot_seeds import SEEDS
+from .blob import MATCH_UM, sigma_um
+from .fsot_seeds import COLLAPSE_THRESHOLD, COMPACTIFICATION_CEILING, SEEDS
 from .peaks import dist_um
 
 
 def max_link_um(match_um: float = MATCH_UM) -> float:
-    """Search radius for t → t+1. Inverse of σ = match/π so cells may move ~π match."""
+    """NN control radius. Inverse of σ = match/π."""
     return match_um * SEEDS.pi
+
+
+def max_link_um_fsot(match_um: float = MATCH_UM) -> float:
+    """Bleed search ball: one golden match. π·match was letting 15 µm leftovers steal."""
+    return match_um * SEEDS.phi
+
+
+def expected_step_um(match_um: float = MATCH_UM) -> float:
+    """Fluid first-step prior: one golden DoG length. GT median on 0113de3b is ~2.9 µm."""
+    return sigma_um(match_um) * SEEDS.phi
+
+
+def kappa_link(
+    dist_um: torch.Tensor,
+    *,
+    s_i: torch.Tensor | None = None,
+    s_j: torch.Tensor | None = None,
+    peak_at_um: torch.Tensor | float,
+    match_um: float = MATCH_UM,
+) -> torch.Tensor:
+    """Quantum bleed κ on a pair, with Fluid spatial prior.
+
+    ident = 1 / (1 + |Si−Sj|/Θ)  — collapse: same key if S agrees
+    spat  = 1 / (1 + |d − peak|/σ) — first step peaks at φσ; inertia peaks at 0
+    ΔD    = 25 · d / (π·match)     — compactification gap from microns
+    κ     = A_bleed · POOF · ident · spat / (1 + ΔD/25)
+    """
+    sig = sigma_um(match_um)
+    ident = dist_um.new_ones(dist_um.shape)
+    if s_i is not None and s_j is not None:
+        ident = 1.0 / (1.0 + (s_i - s_j).abs() / COLLAPSE_THRESHOLD)
+    spat = 1.0 / (1.0 + (dist_um - peak_at_um).abs() / sig)
+    delta_d = COMPACTIFICATION_CEILING * dist_um / max_link_um_fsot(match_um)
+    return SEEDS.a_bleed * SEEDS.poof * ident * spat / (1.0 + delta_d / COMPACTIFICATION_CEILING)
 
 
 def link_nn(
@@ -53,6 +87,108 @@ def link_nn(
     if not pairs:
         return torch.zeros(0, 2, dtype=torch.long, device=xyz_t.device)
     return torch.tensor(pairs, dtype=torch.long, device=xyz_t.device)
+
+
+def link_fsot(
+    xyz_t: torch.Tensor,
+    xyz_tp: torch.Tensor,
+    *,
+    max_um: float,
+    yx_um: float,
+    z_um: float,
+    s_t: torch.Tensor | None = None,
+    s_tp: torch.Tensor | None = None,
+    vel_t: torch.Tensor | None = None,
+    match_um: float = MATCH_UM,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """One-to-one t→t+1 by bleed κ, not nearest Euclidean.
+
+    Spatial term is a soft NN (peaks at 0). Identity is collapse
+    ``1/(1+|Si−Sj|/Θ)``. Product lets a same-S partner beat a slightly
+    closer speck. Inertia (Fluid) is optional: it followed wrong tracks
+    on 0113de3b and is off by default.
+
+    Returns (E,2) pairs and (M,3) velocity at t+1 (pixels, 0 if unmatched).
+    """
+    n, m = int(xyz_t.size(0)), int(xyz_tp.size(0))
+    zero_pairs = torch.zeros(0, 2, dtype=torch.long, device=xyz_t.device)
+    vel_tp = xyz_tp.new_zeros(m, 3)
+    if n == 0 or m == 0:
+        return zero_pairs, vel_tp
+
+    d_cur = dist_um(xyz_t, xyz_tp, yx_um=yx_um, z_um=z_um)
+    d_use = d_cur
+    peak_at: torch.Tensor | float = d_cur.new_zeros(())
+    if vel_t is not None:
+        pred = xyz_t + vel_t
+        d_pred = dist_um(pred, xyz_tp, yx_um=yx_um, z_um=z_um)
+        has = (vel_t.pow(2).sum(dim=-1, keepdim=True) > 0).to(d_cur.dtype)
+        d_use = has * d_pred + (1.0 - has) * d_cur
+        peak_at = (1.0 - has) * 0.0
+    s_i = s_t[:, None] if s_t is not None else None
+    s_j = s_tp[None, :] if s_tp is not None else None
+    kappa = kappa_link(
+        d_use, s_i=s_i, s_j=s_j, peak_at_um=peak_at, match_um=match_um,
+    )
+    kappa = kappa.masked_fill(d_cur > max_um, -1.0)
+
+    flat = kappa.reshape(-1)
+    order = torch.argsort(flat, descending=True)
+    used_t = torch.zeros(n, dtype=torch.bool, device=d_cur.device)
+    used_p = torch.zeros(m, dtype=torch.bool, device=d_cur.device)
+    pairs: list[tuple[int, int]] = []
+    for idx in order.tolist():
+        if float(flat[idx]) < 0.0:
+            break
+        i, j = divmod(int(idx), m)
+        if used_t[i] or used_p[j]:
+            continue
+        used_t[i] = True
+        used_p[j] = True
+        pairs.append((i, j))
+        vel_tp[j] = xyz_tp[j] - xyz_t[i]
+        if len(pairs) == min(n, m):
+            break
+    if not pairs:
+        return zero_pairs, vel_tp
+    return torch.tensor(pairs, dtype=torch.long, device=xyz_t.device), vel_tp
+
+
+def link_times(
+    xyz_by_t: dict[int, torch.Tensor],
+    *,
+    max_um: float,
+    yx_um: float,
+    z_um: float,
+    score_by_t: dict[int, torch.Tensor] | None = None,
+    match_um: float = MATCH_UM,
+) -> torch.Tensor:
+    """Chain FSOT links over integer times. Returns global (E,2) into concatenated nodes."""
+    times = sorted(xyz_by_t)
+    offset: dict[int, int] = {}
+    n = 0
+    for t in times:
+        offset[t] = n
+        n += int(xyz_by_t[t].size(0))
+    vel = None
+    edges: list[torch.Tensor] = []
+    for t, tp in zip(times, times[1:]):
+        a, b = xyz_by_t[t], xyz_by_t[tp]
+        s_t = score_by_t[t] if score_by_t is not None else None
+        s_tp = score_by_t[tp] if score_by_t is not None else None
+        # Times may skip; only carry velocity across dt==1.
+        use_vel = vel if (tp == t + 1) else None
+        pairs, vel_next = link_fsot(
+            a, b, max_um=max_um, yx_um=yx_um, z_um=z_um,
+            s_t=s_t, s_tp=s_tp, vel_t=use_vel, match_um=match_um,
+        )
+        vel = vel_next if tp == t + 1 else None
+        if pairs.numel() == 0:
+            continue
+        edges.append(torch.stack([pairs[:, 0] + offset[t], pairs[:, 1] + offset[tp]], dim=1))
+    if not edges:
+        return torch.zeros(0, 2, dtype=torch.long)
+    return torch.cat(edges, dim=0)
 
 
 @dataclass

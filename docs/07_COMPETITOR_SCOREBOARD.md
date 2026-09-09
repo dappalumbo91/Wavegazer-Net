@@ -21,8 +21,8 @@ pixels → peaks → centroids (7 µm, 3D anisotropic)
 | Detect, 3D 7 µm | recall | **1.00** (16 vol, σ NMS) | same 7 µm rule, all Z |
 | Density vs `T_true` | nodes / frame | **~968** vs **~258** | U-Net thr0.99 sits near `T_true` |
 | Top-`T_true` prune | 3D recall | **0.66** (score rank) | trained peak head keeps GT in budget |
-| Linking | edge Jaccard | greedy NN **0.559** (1 video) | transformer edges + ILP |
-| Official-shaped | adj_edge_jaccard | **0.555** (1 video, no div) | floor **0.848**, top **~0.985** |
+| Linking | edge Jaccard | FSOT bleed **0.619** / **0.500** (2 videos) vs NN 0.559 / 0.471 | transformer edges + ILP |
+| Official-shaped | adj_edge_jaccard | FSOT **0.615** / **0.481** (mean **0.548**) | floor **0.848**, top **~0.985** |
 | Local hard5 (CellMot U-Net) | same official metric | — | baseline 0.71, FT+short-track **0.74** |
 
 **Where we sit:** detect box is green. 3D anisotropic 7 µm recall is **1.0** on
@@ -36,11 +36,14 @@ a 0.848-class number.
    (1.0, ~968/frame, density would cap adj at ~0.72). Full-video 7 µm NMS
    sat at 27534 vs `T_true` 25755 on `44b6_0113de3b` — density is fine.
    Seed rankers and Z-focus cannot prune σ-NMS extras without losing GT.
-2. **Linking (the live gap to 0.848).** Greedy t→t+1 NN: node recall
-   **1.0**, 38/50 GT edges TP, 18 FP, 12 FN → J **0.559** →
-   `adj_edge_jaccard` **0.555**. Killing FP alone → ~0.76; recovering FN
-   alone → ~0.74. Need both: CellMot transformer+ILP, not a tighter DoG.
-   Divisions not scored (0.1×).
+2. **Linking (still the gap to 0.848).** Bleed κ
+   (`A_bleed·POOF·ident/(1+ΔD/25)`, ident = collapse `1/(1+|ΔS|/Θ)`,
+   search `φ·7` µm) beats greedy NN: **0.615 vs 0.555** and **0.481 vs
+   0.453** adj on two videos. GT-only NN is already **1.0** — extras steal
+   the 11–17 FN. Identity cannot outrank a 2 µm speck vs a 7 µm true
+   partner. Golden-step + inertia followed wrong tracks (J dropped to
+   0.37). Next: codon-patch identity or an ILP on these κ costs, not a
+   tighter DoG. Divisions not scored (0.1×).
 3. **Then** public LB vs 0.848 / 0.985.
 
 Do not quote 1.0 detect recall as “near 0.848”. Different units.
@@ -120,15 +123,20 @@ NMS** so density stays near `T_true`.
 
 ## Live linking (2026-09-09)
 
-One full video, greedy next-frame NN, max link `π·7` µm, 7 µm cell NMS.
-Artifact `biohub_track_nn.json`. Not transformer+ILP. No division term.
+Full videos, 7 µm cell NMS. Artifact `biohub_track_nn.json`.
+No transformer+ILP. No division term.
 
-| Video | node rec | edge TP/FP/FN | J | T_pred / T_true | J_adj |
-|-------|----------|---------------|---|-----------------|-------|
-| `44b6_0113de3b` | **1.00** | 38 / 18 / 12 | 0.559 | 27534 / 25755 | **0.555** |
+| Video | linker | node rec | TP/FP/FN | J | T_pred / T_true | J_adj |
+|-------|--------|----------|----------|---|-----------------|-------|
+| `44b6_0113de3b` | greedy NN `π·7` | 1.00 | 38/18/12 | 0.559 | 27534/25755 | 0.555 |
+| `44b6_0113de3b` | **FSOT bleed `φ·7`** | 1.00 | 39/13/11 | **0.619** | 27534/25755 | **0.615** |
+| `44b6_0b24845f` | greedy NN | 0.90 | 32/19/17 | 0.471 | 45136/32795 | 0.453 |
+| `44b6_0b24845f` | **FSOT bleed** | 0.90 | 32/15/17 | **0.500** | 45136/32795 | **0.481** |
 
-Competition: floor **0.848**, top **~0.985**. This 0.555 is the same unit
-as the leaderboard (minus 0.1×div). Gap is **edge quality**, not detect.
+Mean FSOT `adj_edge_jaccard` **0.548** vs NN **0.504**. Floor **0.848**.
+The lift is real and on-spine (Quantum κ + collapse ident). Remaining FN
+are nearer extras; remaining density miss on the second video is 1.38×
+`T_true`.
 
 ## Current artifacts
 
@@ -138,4 +146,4 @@ as the leaderboard (minus 0.1×div). Gap is **edge quality**, not detect.
 | `artifacts/biohub_compare.json` | dense disks on Z-max (proxy, class-imbalanced) |
 | `artifacts/biohub_peaks_7um.json` | 2D YX detect |
 | `artifacts/biohub_peaks_3d_7um.json` | **3D 7 µm detect** |
-| `artifacts/biohub_track_nn.json` | greedy NN linking (when run) |
+| `artifacts/biohub_track_nn.json` | FSOT bleed vs greedy NN linking |

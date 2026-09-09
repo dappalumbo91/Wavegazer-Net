@@ -18,11 +18,11 @@ import torch
 import zarr
 
 from wavegazer.blob import MATCH_UM
-from wavegazer.track import link_nn, max_link_um, score_edges
+from wavegazer.track import link_fsot, link_nn, max_link_um, max_link_um_fsot, score_edges
 from wavegazer.wavegazer_net import WavegazerNet
 
 BIOHUB = Path(r"D:\Kaggle_Biohub_Data\train")
-N_VOLUMES = 1
+N_VOLUMES = 2
 YX_UM = 0.40625
 Z_UM = 1.625
 
@@ -47,6 +47,7 @@ def main() -> None:
     net = WavegazerNet(1, 2, sparse=True)
     net.eval()
     link_um = max_link_um(MATCH_UM)
+    fs_um = max_link_um_fsot(MATCH_UM)
     zarrs = sorted(p for p in BIOHUB.iterdir() if p.name.endswith(".zarr"))
     rows, names = [], []
     for zp in zarrs:
@@ -71,16 +72,27 @@ def main() -> None:
         gt_edges_t = torch.tensor(gt_edges, dtype=torch.long) if gt_edges else torch.zeros(0, 2, dtype=torch.long)
 
         t_n = int(arr.shape[0])
+        cache = ROOT / "artifacts" / "peak_cache" / f"{zp.stem}.pt"
         xyz_by_t: dict[int, torch.Tensor] = {}
-        with torch.no_grad():
-            for t in range(t_n):
-                vol = _norm_vol(np.asarray(arr[t]))
-                pred, _ = net.detect_volume(
-                    torch.from_numpy(vol), yx_um=YX_UM, z_um=Z_UM, nms_um=MATCH_UM,
-                )
-                xyz_by_t[t] = pred
-                if t % 20 == 0:
-                    print(f"  {zp.stem} t={t}/{t_n} peaks={pred.size(0)}", flush=True)
+        score_by_t: dict[int, torch.Tensor] = {}
+        if cache.is_file():
+            packed = torch.load(cache, map_location="cpu", weights_only=False)
+            xyz_by_t = {int(k): v for k, v in packed["xyz"].items()}
+            score_by_t = {int(k): v for k, v in packed["score"].items()}
+            print(f"  {zp.stem} loaded cache {cache.name} T={len(xyz_by_t)}", flush=True)
+        else:
+            with torch.no_grad():
+                for t in range(t_n):
+                    vol = _norm_vol(np.asarray(arr[t]))
+                    pred, sc = net.detect_volume(
+                        torch.from_numpy(vol), yx_um=YX_UM, z_um=Z_UM, nms_um=MATCH_UM,
+                    )
+                    xyz_by_t[t] = pred
+                    score_by_t[t] = sc
+                    if t % 20 == 0:
+                        print(f"  {zp.stem} t={t}/{t_n} peaks={pred.size(0)}", flush=True)
+            cache.parent.mkdir(parents=True, exist_ok=True)
+            torch.save({"xyz": xyz_by_t, "score": score_by_t}, cache)
 
         pred_xyz, pred_t, offset = [], [], {}
         n = 0
@@ -97,20 +109,39 @@ def main() -> None:
         pred_xyz_t = torch.cat(pred_xyz, dim=0)
         pred_t_t = torch.cat(pred_t, dim=0)
 
-        pred_edges = []
-        for t in range(t_n - 1):
-            a, b = xyz_by_t[t], xyz_by_t[t + 1]
-            pairs = link_nn(a, b, max_um=link_um, yx_um=YX_UM, z_um=Z_UM)
-            if pairs.numel() == 0:
-                continue
-            pred_edges.append(torch.stack([pairs[:, 0] + offset[t], pairs[:, 1] + offset[t + 1]], dim=1))
-        pred_edges_t = torch.cat(pred_edges, dim=0) if pred_edges else torch.zeros(0, 2, dtype=torch.long)
+        def _edges(use_fsot: bool) -> torch.Tensor:
+            pred_edges = []
+            vel = None
+            for t in range(t_n - 1):
+                a, b = xyz_by_t[t], xyz_by_t[t + 1]
+                if use_fsot:
+                    pairs, vel = link_fsot(
+                        a, b, max_um=fs_um, yx_um=YX_UM, z_um=Z_UM,
+                        s_t=score_by_t[t], s_tp=score_by_t[t + 1],
+                        vel_t=None, match_um=MATCH_UM,
+                    )
+                else:
+                    pairs = link_nn(a, b, max_um=link_um, yx_um=YX_UM, z_um=Z_UM)
+                    vel = None
+                if pairs.numel() == 0:
+                    continue
+                pred_edges.append(
+                    torch.stack([pairs[:, 0] + offset[t], pairs[:, 1] + offset[t + 1]], dim=1)
+                )
+            return torch.cat(pred_edges, dim=0) if pred_edges else torch.zeros(0, 2, dtype=torch.long)
 
+        nn_edges = _edges(False)
+        fs_edges = _edges(True)
+        c_nn = score_edges(
+            pred_xyz_t, pred_t_t, nn_edges, gt_xyz, gt_t, gt_edges_t,
+            match_um=MATCH_UM, yx_um=YX_UM, z_um=Z_UM,
+        )
         c = score_edges(
-            pred_xyz_t, pred_t_t, pred_edges_t, gt_xyz, gt_t, gt_edges_t,
+            pred_xyz_t, pred_t_t, fs_edges, gt_xyz, gt_t, gt_edges_t,
             match_um=MATCH_UM, yx_um=YX_UM, z_um=Z_UM,
         )
         adj = c.adj_edge_jaccard(t_true)
+        adj_nn = c_nn.adj_edge_jaccard(t_true)
         row = {
             "n_gt_nodes": c.n_gt_nodes,
             "n_pred_nodes": c.n_pred_nodes,
@@ -122,6 +153,11 @@ def main() -> None:
             "edge_fp": c.fp,
             "edge_fn": c.fn,
             "edge_jaccard": c.edge_jaccard,
+            "nn_edge_jaccard": c_nn.edge_jaccard,
+            "nn_edge_tp": c_nn.tp,
+            "nn_edge_fp": c_nn.fp,
+            "nn_edge_fn": c_nn.fn,
+            "nn_adj_edge_jaccard": adj_nn,
             "t_true": t_true,
             "adj_edge_jaccard": adj,
             "t_frames": t_n,
@@ -130,9 +166,12 @@ def main() -> None:
         names.append(zp.stem)
         print(
             f"{zp.stem} node_rec={c.node_recall:.3f} "
-            f"J={c.edge_jaccard:.3f} J_adj={adj:.3f} "
+            f"NN J={c_nn.edge_jaccard:.3f} J_adj={adj_nn:.3f} "
+            f"tp/fp/fn={c_nn.tp}/{c_nn.fp}/{c_nn.fn} | "
+            f"FSOT J={c.edge_jaccard:.3f} J_adj={adj:.3f} "
             f"tp/fp/fn={c.tp}/{c.fp}/{c.fn} "
-            f"T_pred={c.n_pred_nodes} T_true={t_true:.0f}"
+            f"T_pred={c.n_pred_nodes} T_true={t_true:.0f}",
+            flush=True,
         )
 
     def _mean(rs):
@@ -142,15 +181,16 @@ def main() -> None:
         return {k: sum(r[k] for r in rs) / len(rs) for k in keys}
 
     payload = {
-        "metric": "greedy_nn_adj_edge_jaccard",
-        "linker": "next_frame_nn",
+        "metric": "fsot_bleed_adj_edge_jaccard",
+        "linker": "bleed_kappa_fluid_step",
         "max_link_um": link_um,
         "n_volumes": len(names),
         "volumes": names,
         "wavegazer": {"per": rows, "mean": _mean(rows)},
         "note": (
-            "Greedy t→t+1 nearest neighbor, max_um=π·7. Not transformer+ILP. "
-            "adj_edge_jaccard uses estimated_number_of_nodes. No division term."
+            "FSOT linker: Quantum κ (ident via collapse Θ, spatial prior φσ, "
+            "Fluid inertia once a track exists). Control: greedy NN. "
+            "7 µm cell NMS. No transformer+ILP. No division term."
         ),
         "competition_context": {
             "public_floor_full_score": 0.848,
