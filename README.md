@@ -56,7 +56,7 @@ This tree was stood up on:
 ## Setup
 
 ```powershell
-cd "C:\Users\damia\Desktop\Wavegazer net"
+cd "Wavegazer-Net"
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
 .\.venv\Scripts\python.exe -m pip install torch==2.9.1+cu128 torchvision --index-url https://download.pytorch.org/whl/cu128
@@ -85,7 +85,7 @@ claim. `compare_synthetic.py` is the first named split.
 
 The Kaggle Biohub dump is on **D:**, not the mystery USB:
 
-`D:\Kaggle_Biohub_Data\train` — 199 zarr+geff pairs, **~175 GB**.
+`<local folder, not included in repo: Kaggle_Biohub_Data/train>` — 199 zarr+geff pairs, **~175 GB**.
 
 `scripts/compare_biohub.py` scores a 2D Z-max + disk-around-centroid proxy
 (not the official track metric). Use `WavegazerNet(..., sparse=True)` there.

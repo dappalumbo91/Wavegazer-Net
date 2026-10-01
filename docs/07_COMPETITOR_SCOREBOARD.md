@@ -74,7 +74,7 @@ Biohub prize.
 
 ## Detect protocol (locked)
 
-- Data: `D:\Kaggle_Biohub_Data\train` (~175 GB, 199 volumes)
+- Data: `<local folder, not included in repo: Kaggle_Biohub_Data/train>` (~175 GB, 199 volumes)
 - Frame: busiest `t`, plane at median GT `z` (not Z-max)
 - Match: YX Euclidean, **7 µm / 0.40625 µm·px⁻¹ ≈ 17.23 px**
 - Wavegazer head: φ-DoG (`σ`, `φσ`) → Optics S → sparse gate `mean+φ·std` → NMS radius `σ`
