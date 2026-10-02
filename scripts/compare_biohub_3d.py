@@ -6,6 +6,18 @@ This scans every Z at the busiest t.
 
 from __future__ import annotations
 
+import os as _os
+from pathlib import Path as _Path
+
+_REPO_ROOT = _Path(__file__).resolve().parents[1]
+
+
+def _fsot_local_path(env, default):
+    """Local path outside the repo: $env if set, else a path relative to the repo root."""
+    _v = _os.environ.get(env, "").strip()
+    return _Path(_v) if _v else _REPO_ROOT / default
+
+
 import json
 import sys
 from pathlib import Path
@@ -20,7 +32,7 @@ from wavegazer.blob import MATCH_UM, sigma_um
 from wavegazer.peaks import match_xyz_um
 from wavegazer.wavegazer_net import WavegazerNet
 
-BIOHUB = Path(r"D:\Kaggle_Biohub_Data\train")
+BIOHUB = _fsot_local_path('KAGGLE_BIOHUB_DATA', 'data_external/kaggle_biohub') / 'train'
 N_VOLUMES = 16
 YX_UM = 0.40625
 Z_UM = 1.625
