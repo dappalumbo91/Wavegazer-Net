@@ -2,6 +2,18 @@
 
 from __future__ import annotations
 
+import os as _os
+from pathlib import Path as _Path
+
+_REPO_ROOT = _Path(__file__).resolve().parents[1]
+
+
+def _fsot_local_path(env, default):
+    """Local path outside the repo: $env if set, else a path relative to the repo root."""
+    _v = _os.environ.get(env, "").strip()
+    return _Path(_v) if _v else _REPO_ROOT / default
+
+
 import importlib.util
 import sys
 from pathlib import Path
@@ -26,7 +38,7 @@ def main() -> None:
     maxd = MATCH_UM / um
     sig = sigma_px(um, MATCH_UM)
     window = max(int(2 * sig) | 1, 3)
-    root = Path(r"D:\Kaggle_Biohub_Data\train")
+    root = _fsot_local_path('KAGGLE_BIOHUB_DATA', 'data_external/kaggle_biohub') / 'train'
     for name in MISSES:
         zp = root / f"{name}.zarr"
         packed = cmp._plane_and_gt(zp, zp.with_suffix(".geff"))

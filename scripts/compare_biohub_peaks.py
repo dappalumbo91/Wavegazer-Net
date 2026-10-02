@@ -7,6 +7,18 @@ This is the PIXEL_FIRST / competition *node* metric, not adj_edge_jaccard
 
 from __future__ import annotations
 
+import os as _os
+from pathlib import Path as _Path
+
+_REPO_ROOT = _Path(__file__).resolve().parents[1]
+
+
+def _fsot_local_path(env, default):
+    """Local path outside the repo: $env if set, else a path relative to the repo root."""
+    _v = _os.environ.get(env, "").strip()
+    return _Path(_v) if _v else _REPO_ROOT / default
+
+
 import json
 import sys
 from pathlib import Path
@@ -21,7 +33,7 @@ from wavegazer.blob import DEFAULT_YX_UM, MATCH_UM, multi_scale_blob_map, sigma_
 from wavegazer.peaks import PeakSet, detect_gate, local_maxima, match_xy, nms
 from wavegazer.wavegazer_net import WavegazerNet
 
-BIOHUB = Path(r"D:\Kaggle_Biohub_Data\train")
+BIOHUB = _fsot_local_path('KAGGLE_BIOHUB_DATA', 'data_external/kaggle_biohub') / 'train'
 N_VOLUMES = 48
 SEED = 20260831
 

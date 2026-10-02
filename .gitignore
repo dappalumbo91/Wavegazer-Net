@@ -20,3 +20,6 @@ dist/
 build/
 kaggle/wavegazer-net/**
 !kaggle/wavegazer-net/dataset-metadata.json
+
+# Local external data (see FSOT_* env vars); never committed
+data_external/

@@ -2,6 +2,18 @@
 
 from __future__ import annotations
 
+import os as _os
+from pathlib import Path as _Path
+
+_REPO_ROOT = _Path(__file__).resolve().parents[1]
+
+
+def _fsot_local_path(env, default):
+    """Local path outside the repo: $env if set, else a path relative to the repo root."""
+    _v = _os.environ.get(env, "").strip()
+    return _Path(_v) if _v else _REPO_ROOT / default
+
+
 import sys
 from pathlib import Path
 
@@ -16,7 +28,7 @@ from wavegazer.blob import MATCH_UM, sigma_px
 from wavegazer.peaks import PeakSet, detect_gate, dist_um, local_maxima
 from wavegazer.wavegazer_net import WavegazerNet
 
-BIOHUB = Path(r"D:\Kaggle_Biohub_Data\train")
+BIOHUB = _fsot_local_path('KAGGLE_BIOHUB_DATA', 'data_external/kaggle_biohub') / 'train'
 NAME = "44b6_2f31fc2f"
 YX_UM = 0.40625
 Z_UM = 1.625

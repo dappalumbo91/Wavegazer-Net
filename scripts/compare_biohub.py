@@ -6,6 +6,18 @@ That is a localization proxy, not the official adj_edge_jaccard score.
 
 from __future__ import annotations
 
+import os as _os
+from pathlib import Path as _Path
+
+_REPO_ROOT = _Path(__file__).resolve().parents[1]
+
+
+def _fsot_local_path(env, default):
+    """Local path outside the repo: $env if set, else a path relative to the repo root."""
+    _v = _os.environ.get(env, "").strip()
+    return _Path(_v) if _v else _REPO_ROOT / default
+
+
 import json
 import sys
 from pathlib import Path
@@ -23,7 +35,7 @@ from wavegazer.losses import ce_dice_loss
 from wavegazer.metrics import dice_coefficient, intersection_over_union, pixel_error
 from wavegazer.wavegazer_net import WavegazerNet
 
-BIOHUB = Path(r"D:\Kaggle_Biohub_Data\train")
+BIOHUB = _fsot_local_path('KAGGLE_BIOHUB_DATA', 'data_external/kaggle_biohub') / 'train'
 RADIUS_PX = 8  # ~3.25 µm at 0.40625 µm/px; competition match is 7 µm
 N_VOLUMES = 24
 SEED = 20260831
