@@ -1,0 +1,14 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "Wavegazer Net: FSOT image segmentation equivalent to U-Net with zero trainable weights"
+authors:
+  - family-names: Palumbo
+    given-names: Damian Arthur
+repository-code: "https://github.com/dappalumbo91/Wavegazer-Net"
+license: Apache-2.0
+abstract: >-
+  Visual segmentation network equivalent in role to U-Net, built from Fluid
+  Spacetime Omni-Theory instead of fitted convolution weights. Not related to
+  FlowNet (optical flow).
+keywords: [fsot, image-segmentation, computer-vision, u-net]
